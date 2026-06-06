@@ -9,8 +9,7 @@ import (
 	"time"
 
 	"github.com/rlibaert/gocast/domain/internal"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/rlibaert/gocast/testing/assert"
 )
 
 func TestPubsub_data_copy(t *testing.T) {
@@ -20,16 +19,16 @@ func TestPubsub_data_copy(t *testing.T) {
 	wg.Go(func() {
 		b := strings.Builder{}
 		n, err := ps.WriteTo(&b)
-		require.NoError(t, err)
-		assert.Equal(t, int64(9), n)
-		assert.Equal(t, "foobarbaz", b.String())
+		assert.ErrNil(t, err)
+		assert.EQ(t, n, 9)
+		assert.EQ(t, b.String(), "foobarbaz")
 	})
 	wg.Go(func() {
 		time.Sleep(time.Second)
 		fmt.Fprint(ps, "foo")
 		fmt.Fprint(ps, "bar")
 		fmt.Fprint(ps, "baz")
-		require.NoError(t, ps.Close())
+		assert.ErrNil(t, ps.Close())
 	})
 
 	wg.Wait()
@@ -56,12 +55,12 @@ func TestPubsub_waits_subs_on_close(t *testing.T) {
 	fmt.Fprint(ps, "baz")
 
 	tick := time.Now()
-	require.NoError(t, ps.Close())
-	assert.Greater(t, time.Since(tick), time.Second)
+	assert.ErrNil(t, ps.Close())
+	assert.GT(t, time.Since(tick), time.Second)
 
 	mu.Lock()
 	defer mu.Unlock()
-	assert.True(t, flag)
+	assert.Expected(t, flag, "flag was not set")
 }
 
 func BenchmarkPubsub_Write10k(b *testing.B) {
@@ -72,7 +71,7 @@ func BenchmarkPubsub_Write10k(b *testing.B) {
 	for range 10_000 {
 		go func() {
 			_, err := ps.WriteTo(io.Discard)
-			assert.NoError(b, err)
+			assert.ErrIs(b, err, nil)
 		}()
 	}
 	go func() {
@@ -85,7 +84,7 @@ func BenchmarkPubsub_Write10k(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		n, err := ps.Write(buf)
-		require.NoError(b, err)
+		assert.ErrNil(b, err)
 		b.SetBytes(int64(n))
 	}
 }
