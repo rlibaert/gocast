@@ -1,7 +1,6 @@
 services:
   gocast:
     build: .
-    command: -log.level debug
     ports:
       - 8080:8080
 

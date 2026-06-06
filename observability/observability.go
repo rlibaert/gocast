@@ -42,7 +42,7 @@ func (l *logs) out(started time.Time, perr *error) {
 	if perr != nil && *perr != nil {
 		attrs[1] = slog.Any("err", *perr)
 	}
-	l.l.LogAttrs(context.Background(), slog.LevelDebug, l.msg, slog.GroupAttrs("out", attrs...))
+	l.l.LogAttrs(context.Background(), slog.LevelInfo, l.msg, slog.GroupAttrs("out", attrs...))
 }
 
 func newLogsFunc(l *slog.Logger) func(fname) *logs {

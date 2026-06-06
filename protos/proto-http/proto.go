@@ -10,7 +10,7 @@ import (
 )
 
 type ServiceRegisterer struct {
-	StreamingService domain.StreamingService
+	StreamsService domain.StreamsService
 }
 
 func httpStatusTextError(w http.ResponseWriter, code int) {
@@ -21,7 +21,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /streams/{stream}", func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		stream := r.PathValue("stream")
-		_, err := reg.StreamingService.Publish(ctx, domain.StreamPub(stream), r.Body)
+		_, err := reg.StreamsService.Publish(ctx, domain.StreamPub(stream), r.Body)
 		switch {
 		case errors.Is(err, nil), errors.Is(err, context.Canceled), errors.Is(err, io.EOF):
 		case errors.Is(err, domain.ErrStreamExists):
@@ -36,7 +36,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 
 		ctx := r.Context()
 		stream := r.PathValue("stream")
-		_, err := reg.StreamingService.Subscribe(ctx, domain.StreamSub(stream), w)
+		_, err := reg.StreamsService.Subscribe(ctx, domain.StreamSub(stream), w)
 		switch {
 		case errors.Is(err, nil), errors.Is(err, context.Canceled), errors.Is(err, io.EOF):
 		case errors.Is(err, domain.ErrStreamNotFound), errors.Is(err, domain.ErrStreamNotAvailable):

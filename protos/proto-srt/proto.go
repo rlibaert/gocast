@@ -9,8 +9,8 @@ import (
 )
 
 type ServiceRegisterer struct {
-	BaseContext      func() context.Context
-	StreamingService domain.StreamingService
+	BaseContext    func() context.Context
+	StreamsService domain.StreamsService
 }
 
 func (reg ServiceRegisterer) Register(s *srt.Server) {
@@ -33,12 +33,12 @@ func (reg ServiceRegisterer) Register(s *srt.Server) {
 		defer conn.Close()
 		ctx := reg.BaseContext()
 		_, stream, _ := strings.Cut(conn.StreamId(), ":")
-		_, _ = reg.StreamingService.Publish(ctx, domain.StreamPub(stream), conn)
+		_, _ = reg.StreamsService.Publish(ctx, domain.StreamPub(stream), conn)
 	}
 	s.HandleSubscribe = func(conn srt.Conn) {
 		defer conn.Close()
 		ctx := reg.BaseContext()
 		_, stream, _ := strings.Cut(conn.StreamId(), ":")
-		_, _ = reg.StreamingService.Subscribe(ctx, domain.StreamSub(stream), conn)
+		_, _ = reg.StreamsService.Subscribe(ctx, domain.StreamSub(stream), conn)
 	}
 }

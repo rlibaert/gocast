@@ -40,48 +40,47 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	svc := domain.NewStreamingService(
-		domain.StreamingServiceHooks{
-			StreamPubStart: func(ctx context.Context, s domain.StreamPub) {
-				logger.InfoContext(ctx, "StreamingServiceHooks.StreamPubStart", "stream", s)
-				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_total", "gocast_")).Inc()
-				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_in_flight", "gocast_")).Inc()
-			},
-			StreamPubStop: func(ctx context.Context, s domain.StreamPub, start time.Time) {
-				dur := time.Since(start)
-				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_in_flight", "gocast_")).Dec()
-				metrics.GetOrCreateHistogram(fmt.Sprintf("%sstreams_pub_seconds{sub=%q}", "gocast_", s)).Update(dur.Seconds())
-				logger.InfoContext(ctx, "StreamingServiceHooks.StreamPubStop", "stream", s, "dur", dur)
-			},
-			StreamSubStart: func(ctx context.Context, s domain.StreamSub) {
-				logger.InfoContext(ctx, "StreamingServiceHooks.StreamSubStart", "stream", s)
-				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_total{sub=%q}", "gocast_", s)).Inc()
-				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_in_flight{sub=%q}", "gocast_", s)).Inc()
-			},
-			StreamSubStop: func(ctx context.Context, s domain.StreamSub, start time.Time) {
-				dur := time.Since(start)
-				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_in_flight{sub=%q}", "gocast_", s)).Dec()
-				metrics.GetOrCreateHistogram(fmt.Sprintf("%sstreams_sub_seconds{sub=%q}", "gocast_", s)).Update(dur.Seconds())
-				logger.InfoContext(ctx, "StreamingServiceHooks.StreamSubStop", "stream", s, "dur", dur)
-			},
+	svcHooks := domain.StreamsServiceHooks{
+		PublishStart: func(ctx context.Context, s domain.StreamPub) {
+			logger.InfoContext(ctx, "publishing", "stream", s)
+			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_total", "gocast_")).Inc()
+			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_in_flight", "gocast_")).Inc()
 		},
-		*svcDebounce,
-	)
-	svc, metricsWriter := observability.ObservableStreamingService(svc, logger)
+		PublishStop: func(ctx context.Context, s domain.StreamPub, start time.Time) {
+			dur := time.Since(start)
+			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_in_flight", "gocast_")).Dec()
+			metrics.GetOrCreateHistogram(fmt.Sprintf("%sstreams_pub_seconds", "gocast_")).Update(dur.Seconds())
+			logger.InfoContext(ctx, "unpublished", "stream", s, "dur_ms", dur.Milliseconds())
+		},
+		SubscribeStart: func(ctx context.Context, s domain.StreamSub) {
+			logger.InfoContext(ctx, "subscribing", "stream", s)
+			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_total{sub=%q}", "gocast_", s)).Inc()
+			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_in_flight{sub=%q}", "gocast_", s)).Inc()
+		},
+		SubscribeStop: func(ctx context.Context, s domain.StreamSub, start time.Time) {
+			dur := time.Since(start)
+			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_in_flight{sub=%q}", "gocast_", s)).Dec()
+			metrics.GetOrCreateHistogram(fmt.Sprintf("%sstreams_sub_seconds{sub=%q}", "gocast_", s)).Update(dur.Seconds())
+			logger.InfoContext(ctx, "unsubscribed", "stream", s, "dur_ms", dur.Milliseconds())
+		},
+	}
+
+	svc := domain.NewStreamsService(svcHooks, *svcDebounce)
+	svc, metricsWriter := observability.ObservableStreamsService(svc, logger)
 
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
 		mux := http.NewServeMux()
 		protohttp.ServiceRegisterer{
-			StreamingService: svc,
+			StreamsService: svc,
 		}.Register(mux)
 		protoicy.ServiceRegisterer{
-			StreamingService: svc,
+			StreamsService: svc,
 		}.Register(mux)
 		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 			metricsWriter(w, "gocast_")
-			for s, p := range domain.StreamingServiceStreamsMap(svc) {
+			for s, p := range domain.StreamsServiceStreamsMap(svc) {
 				fmt.Fprintf(w, "%sstreams_map{sub=%q,pub=%q} 1\n", "gocast_", s, p)
 			}
 			metrics.WritePrometheus(w, true)
@@ -113,8 +112,8 @@ func main() {
 			Config: new(srt.DefaultConfig()),
 		}
 		protosrt.ServiceRegisterer{
-			BaseContext:      func() context.Context { return ctx },
-			StreamingService: svc,
+			BaseContext:    func() context.Context { return ctx },
+			StreamsService: svc,
 		}.Register(srv)
 
 		eg.Go(func() error {
