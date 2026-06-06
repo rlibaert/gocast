@@ -2,11 +2,18 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
 
 	"github.com/rlibaert/gocast/domain/internal"
+)
+
+var (
+	ErrStreamExists       = errors.New("domain: stream exists")
+	ErrStreamNotFound     = errors.New("domain: stream not found")
+	ErrStreamNotAvailable = errors.New("domain: stream not available")
 )
 
 // StreamPub is a published stream.
