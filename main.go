@@ -43,7 +43,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	svcHooks := domain.StreamsServiceHooks{
+	svcHooks := domain.ServiceHooks{
 		PublishStart: func(ctx context.Context, s domain.StreamPub) {
 			logger.InfoContext(ctx, "publishing", "stream", s)
 			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_total", "gocast_")).Inc()
@@ -68,19 +68,19 @@ func main() {
 		},
 	}
 
-	svc := domain.NewStreamsService(svcHooks, *svcDebounce)
-	svc, metricsWriter := observability.ObservableStreamsService(svc, logger)
+	svc := domain.NewService(svcHooks, *svcDebounce)
+	svc, metricsWriter := observability.ObservableService(svc, logger)
 
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
 		mux := http.NewServeMux()
 		protohttp.ServiceRegisterer{
-			StreamsService: svc,
+			Service: svc,
 		}.Register(mux)
 		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 			metricsWriter(w, "gocast_")
-			for s, p := range domain.StreamsServiceStreamsMap(svc) {
+			for s, p := range domain.ServiceStreamsMap(svc) {
 				fmt.Fprintf(w, "%sstreams_map{sub=%q,pub=%q} 1\n", "gocast_", s, p)
 			}
 			metrics.WritePrometheus(w, true)
@@ -109,7 +109,7 @@ func main() {
 	eg.Go(func() error {
 		mux := http.NewServeMux()
 		protoicy.ServiceRegisterer{
-			StreamsService: svc,
+			Service: svc,
 		}.Register(mux)
 		srv := &http.Server{
 			BaseContext:       func(net.Listener) context.Context { return ctx },
@@ -140,8 +140,8 @@ func main() {
 		}
 		srv.Config.Logger = &srtLogger{srvErrorLog}
 		protosrt.ServiceRegisterer{
-			BaseContext:    func() context.Context { return ctx },
-			StreamsService: svc,
+			BaseContext: func() context.Context { return ctx },
+			Service:     svc,
 		}.Register(srv)
 
 		eg.Go(func() error {

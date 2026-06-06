@@ -12,7 +12,7 @@ import (
 )
 
 type ServiceRegisterer struct {
-	StreamsService domain.StreamsService
+	Service domain.Service
 }
 
 func httpStatusTextError(w http.ResponseWriter, code int) {
@@ -31,7 +31,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		defer conn.Close()
 
 		stream := r.PathValue("stream")
-		_, _ = reg.StreamsService.Publish(r.Context(), domain.StreamPub(stream), buf)
+		_, _ = reg.Service.Publish(r.Context(), domain.StreamPub(stream), buf)
 	})
 
 	mux.HandleFunc("PUT /{stream}", func(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +47,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		defer conn.Close()
 
 		stream := r.PathValue("stream")
-		_, _ = reg.StreamsService.Publish(r.Context(), domain.StreamPub(stream), buf)
+		_, _ = reg.Service.Publish(r.Context(), domain.StreamPub(stream), buf)
 	})
 
 	mux.HandleFunc("GET /{stream}", func(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +61,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 				pageSize: metaInt,
 				onPageEnd: func() {
 					var m metadata
-					if title, ok := domain.StreamsServiceStreamSubTitle(reg.StreamsService, domain.StreamSub(stream)); ok {
+					if title, ok := domain.ServiceStreamSubTitle(reg.Service, domain.StreamSub(stream)); ok {
 						m.StreamTitle = &title
 					}
 					b, _ := m.MarshalBinary()
@@ -73,7 +73,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 
 		w.Header().Set("Content-Type", "audio/mpeg")
 
-		_, err := reg.StreamsService.Subscribe(ctx, domain.StreamSub(stream), writer)
+		_, err := reg.Service.Subscribe(ctx, domain.StreamSub(stream), writer)
 		switch {
 		case errors.Is(err, nil), errors.Is(err, context.Canceled), errors.Is(err, io.EOF):
 		case errors.Is(err, domain.ErrStreamNotFound):
@@ -104,7 +104,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 			return
 		}
 
-		err := reg.StreamsService.PublishTitle(ctx, domain.StreamPub(stream), title)
+		err := reg.Service.PublishTitle(ctx, domain.StreamPub(stream), title)
 		switch {
 		case errors.Is(err, nil), errors.Is(err, context.Canceled):
 		case errors.Is(err, domain.ErrStreamNotFound):

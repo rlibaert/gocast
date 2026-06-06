@@ -11,7 +11,7 @@ import (
 )
 
 type ServiceRegisterer struct {
-	StreamsService domain.StreamsService
+	Service domain.Service
 }
 
 func httpStatusTextError(w http.ResponseWriter, code int) {
@@ -23,7 +23,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		ctx := r.Context()
 		stream := r.PathValue("stream")
 
-		_, err := reg.StreamsService.Publish(ctx, domain.StreamPub(stream), r.Body)
+		_, err := reg.Service.Publish(ctx, domain.StreamPub(stream), r.Body)
 		switch {
 		case errors.Is(err, nil), errors.Is(err, context.Canceled), errors.Is(err, io.EOF):
 		case errors.Is(err, domain.ErrStreamExists):
@@ -38,7 +38,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 
 		ctx := r.Context()
 		stream := r.PathValue("stream")
-		_, err := reg.StreamsService.Subscribe(ctx, domain.StreamSub(stream), w)
+		_, err := reg.Service.Subscribe(ctx, domain.StreamSub(stream), w)
 		switch {
 		case errors.Is(err, nil), errors.Is(err, context.Canceled), errors.Is(err, io.EOF):
 		case errors.Is(err, domain.ErrStreamNotFound):
@@ -52,7 +52,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		ctx := r.Context()
 		stream := r.PathValue("stream")
 		title := r.URL.Query().Get("title")
-		err := reg.StreamsService.PublishTitle(ctx, domain.StreamPub(stream), title)
+		err := reg.Service.PublishTitle(ctx, domain.StreamPub(stream), title)
 		switch {
 		case errors.Is(err, nil), errors.Is(err, context.Canceled):
 		case errors.Is(err, domain.ErrStreamNotFound):
@@ -64,7 +64,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /streams/{stream}/metadata", func(w http.ResponseWriter, r *http.Request) {
 		stream := r.PathValue("stream")
-		title, ok := domain.StreamsServiceStreamSubTitle(reg.StreamsService, domain.StreamSub(stream))
+		title, ok := domain.ServiceStreamSubTitle(reg.Service, domain.StreamSub(stream))
 		if !ok {
 			httpStatusTextError(w, http.StatusNotFound)
 			return

@@ -29,7 +29,7 @@ type (
 // AsSub implements the subscribable nature of published streams.
 func (s StreamPub) AsSub() StreamSub { return StreamSub(s) }
 
-type StreamsService interface {
+type Service interface {
 	Publish(context.Context, StreamPub, io.Reader) (int64, error)
 	Subscribe(context.Context, StreamSub, io.Writer) (int64, error)
 	PublishTitle(context.Context, StreamPub, string) error
@@ -38,42 +38,42 @@ type StreamsService interface {
 	streamsMap() map[StreamSub]StreamPub
 }
 
-func StreamsServiceStreamSubTitle(svc StreamsService, s StreamSub) (string, bool) {
+func ServiceStreamSubTitle(svc Service, s StreamSub) (string, bool) {
 	return svc.streamSubTitle(s)
 }
 
-func StreamsServiceStreamsMap(svc StreamsService) map[StreamSub]StreamPub {
+func ServiceStreamsMap(svc Service) map[StreamSub]StreamPub {
 	return svc.streamsMap()
 }
 
-type StreamsServiceHooks struct {
+type ServiceHooks struct {
 	PublishStart   func(ctx context.Context, s StreamPub)
 	PublishStop    func(ctx context.Context, s StreamPub, start time.Time)
 	SubscribeStart func(ctx context.Context, s StreamSub)
 	SubscribeStop  func(ctx context.Context, s StreamSub, start time.Time)
 }
 
-func NewStreamsService(
-	hooks StreamsServiceHooks,
+func NewService(
+	hooks ServiceHooks,
 	debounce time.Duration,
-) StreamsService {
-	var svc StreamsService = &streamsService{
+) Service {
+	var svc Service = &service{
 		hooks:          hooks,
 		streamsMapping: map[StreamSub]StreamPub{},
 	}
-	svc = debouncedStreamsService{svc, debounce}
+	svc = serviceDebounced{svc, debounce}
 	return svc
 }
 
-type streamsService struct {
-	hooks StreamsServiceHooks
+type service struct {
+	hooks ServiceHooks
 
 	mu             sync.RWMutex
 	streamsMapping map[StreamSub]StreamPub
 	streamsPubsub  sync.Map
 }
 
-func (svc *streamsService) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
+func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
 	r = internal.ContextReader{Context: ctx, Reader: r}
 
 	svc.mu.Lock()
@@ -107,20 +107,20 @@ func (svc *streamsService) Publish(ctx context.Context, s StreamPub, r io.Reader
 			}
 
 			ps, _ := svc.streamsPubsub.Load(sub)
-			ps.(*streamsPubsub).Write(p) //nolint: errcheck,gosec // always valid and never fails
+			ps.(*pubsub).Write(p) //nolint: errcheck,gosec // always valid and never fails
 		}
 
 		return len(p), nil
 	})
 
-	svc.streamsPubsub.LoadOrStore(s.AsSub(), newStreamsPubsub())
+	svc.streamsPubsub.LoadOrStore(s.AsSub(), newPubsub())
 
 	svc.hooks.PublishStart(ctx, s)
 	defer svc.hooks.PublishStop(ctx, s, time.Now())
 	return io.Copy(w, r)
 }
 
-func (svc *streamsService) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (int64, error) {
+func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (int64, error) {
 	w = internal.ContextWriter{Context: ctx, Writer: w}
 
 	ps, loaded := svc.streamsPubsub.Load(s)
@@ -130,10 +130,10 @@ func (svc *streamsService) Subscribe(ctx context.Context, s StreamSub, w io.Writ
 
 	svc.hooks.SubscribeStart(ctx, s)
 	defer svc.hooks.SubscribeStop(ctx, s, time.Now())
-	return ps.(*streamsPubsub).WriteTo(w) //nolint: errcheck // always valid
+	return ps.(*pubsub).WriteTo(w) //nolint: errcheck // always valid
 }
 
-func (svc *streamsService) PublishTitle(ctx context.Context, s StreamPub, title string) error {
+func (svc *service) PublishTitle(ctx context.Context, s StreamPub, title string) error {
 	svc.mu.RLock()
 	defer svc.mu.RUnlock()
 
@@ -146,20 +146,20 @@ func (svc *streamsService) PublishTitle(ctx context.Context, s StreamPub, title 
 
 		ps, _ := svc.streamsPubsub.Load(sub)
 		if ps != nil {
-			ps.(*streamsPubsub).metadata.Store("title", title)
+			ps.(*pubsub).metadata.Store("title", title)
 		}
 	}
 
 	return err
 }
 
-func (svc *streamsService) streamSubTitle(s StreamSub) (string, bool) {
+func (svc *service) streamSubTitle(s StreamSub) (string, bool) {
 	ps, loaded := svc.streamsPubsub.Load(s)
 	if !loaded {
 		return "", false
 	}
 
-	v, ok := ps.(*streamsPubsub).metadata.Load("title")
+	v, ok := ps.(*pubsub).metadata.Load("title")
 	if !ok {
 		return "", false
 	}
@@ -167,14 +167,14 @@ func (svc *streamsService) streamSubTitle(s StreamSub) (string, bool) {
 	return v.(string), true
 }
 
-func (svc *streamsService) streamsMap() map[StreamSub]StreamPub {
+func (svc *service) streamsMap() map[StreamSub]StreamPub {
 	svc.mu.RLock()
 	defer svc.mu.RUnlock()
 	return maps.Clone(svc.streamsMapping)
 }
 
-// streamsPubsub wraps an [internal.Pubsub] to buffer writes and burst data when a new subscriber connects.
-type streamsPubsub struct {
+// pubsub wraps an [internal.Pubsub] to buffer writes and burst data when a new subscriber connects.
+type pubsub struct {
 	internal.Pubsub
 
 	index  int64     // the currently written chunk
@@ -184,12 +184,10 @@ type streamsPubsub struct {
 	metadata sync.Map
 }
 
-func newStreamsPubsub() internal.Pubsub {
-	return &streamsPubsub{Pubsub: internal.NewPubsub()}
-}
+func newPubsub() *pubsub { return &pubsub{Pubsub: internal.NewPubsub()} }
 
 // Write buffers the data in ringed chunks of roughly equal durations.
-func (ps *streamsPubsub) Write(p []byte) (int, error) {
+func (ps *pubsub) Write(p []byte) (int, error) {
 	ps.chunks[ps.index] = append(ps.chunks[ps.index], p...)
 	if time.Since(ps.start) < 2*time.Second {
 		return len(p), nil
@@ -205,14 +203,14 @@ func (ps *streamsPubsub) Write(p []byte) (int, error) {
 }
 
 // Close flushes buffered data and closes the underlying [internal.Pubsub].
-func (ps *streamsPubsub) Close() error {
+func (ps *pubsub) Close() error {
 	_, err := ps.Pubsub.Write(ps.chunks[ps.index])
 	return errors.Join(ps.Pubsub.Close(), err)
 }
 
 // WriteTo starts by writing the buffered data chunks, excepted the current
 // and the next to be (for clearance, meaning that we need at least 3 chunks).
-func (ps *streamsPubsub) WriteTo(w io.Writer) (int64, error) {
+func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 	var n int64
 
 	index := atomic.LoadInt64(&ps.index)
@@ -228,13 +226,13 @@ func (ps *streamsPubsub) WriteTo(w io.Writer) (int64, error) {
 	return n + m, err
 }
 
-type debouncedStreamsService struct {
-	StreamsService
+type serviceDebounced struct {
+	Service
 
 	duration time.Duration
 }
 
-func (svc debouncedStreamsService) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
+func (svc serviceDebounced) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
 	type stopError struct{ error }
 
 	t := time.Now().Add(svc.duration)
@@ -250,6 +248,6 @@ func (svc debouncedStreamsService) Publish(ctx context.Context, s StreamPub, r i
 		return n, err
 	}
 
-	m, err := svc.StreamsService.Publish(ctx, s, r)
+	m, err := svc.Service.Publish(ctx, s, r)
 	return n + m, err
 }
