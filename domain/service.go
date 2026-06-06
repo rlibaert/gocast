@@ -175,12 +175,12 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 
 	svc.hooks.PublishStart(ctx, s)
 	defer svc.hooks.PublishStop(ctx, s, time.Now())
-	return StreamCopy(internal.ContextWriter{Context: ctx, Writer: svc.streamPubWriter(s)}, r)
+	return StreamCopy(internal.WriterContext(ctx, svc.streamPubWriter(s)), r)
 }
 
 // streamPubWriter returns an [io.Writer] that writes every [StreamSub] mapped to [StreamPub].
 func (svc *service) streamPubWriter(s StreamPub) io.Writer {
-	return internal.FuncWriter(func(p []byte) (int, error) {
+	return internal.WriterFunc(func(p []byte) (int, error) {
 		svc.mu.RLock()
 		defer svc.mu.RUnlock()
 
@@ -205,7 +205,7 @@ func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (in
 
 	svc.hooks.SubscribeStart(ctx, s)
 	defer svc.hooks.SubscribeStop(ctx, s, time.Now())
-	return ps.(internal.Pubsub).WriteTo(internal.ContextWriter{Context: ctx, Writer: w}) //nolint: errcheck // always valid
+	return ps.(internal.Pubsub).WriteTo(internal.WriterContext(ctx, w)) //nolint: errcheck // always valid
 }
 
 func (svc *service) PublishTitle(_ context.Context, s StreamPub, title string) error {
@@ -271,7 +271,7 @@ func (svc serviceDebounced) debounce(parent context.Context, r io.Reader) (int64
 	defer cancel()
 
 	b := bytes.NewBuffer(nil)
-	n, err := b.ReadFrom(internal.ContextReader{Context: ctx, Reader: r})
+	n, err := b.ReadFrom(internal.ReaderContext(ctx, r))
 
 	return n, err, io.MultiReader(b, r), context.Cause(ctx) == errStop
 }

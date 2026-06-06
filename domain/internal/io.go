@@ -5,34 +5,32 @@ import (
 	"io"
 )
 
-type FuncWriter func(p []byte) (int, error)
+type readWriterFunc func(p []byte) (int, error)
 
-func (f FuncWriter) Write(p []byte) (int, error) { return f(p) }
+func (f readWriterFunc) Read(p []byte) (int, error)  { return f(p) }
+func (f readWriterFunc) Write(p []byte) (int, error) { return f(p) }
 
-type ContextWriter struct {
-	context.Context
-	io.Writer
+func ReaderFunc(f func(p []byte) (int, error)) io.Reader { return readWriterFunc(f) }
+func WriterFunc(f func(p []byte) (int, error)) io.Writer { return readWriterFunc(f) }
+
+func ReaderContext(ctx context.Context, r io.Reader) io.Reader {
+	return readWriterFunc(func(p []byte) (int, error) {
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		default:
+			return r.Read(p)
+		}
+	})
 }
 
-func (w ContextWriter) Write(p []byte) (int, error) {
-	select {
-	case <-w.Context.Done():
-		return 0, w.Context.Err()
-	default:
-		return w.Writer.Write(p)
-	}
-}
-
-type ContextReader struct {
-	context.Context
-	io.Reader
-}
-
-func (r ContextReader) Read(p []byte) (int, error) {
-	select {
-	case <-r.Context.Done():
-		return 0, r.Context.Err()
-	default:
-		return r.Reader.Read(p)
-	}
+func WriterContext(ctx context.Context, w io.Writer) io.Writer {
+	return readWriterFunc(func(p []byte) (int, error) {
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		default:
+			return w.Write(p)
+		}
+	})
 }
