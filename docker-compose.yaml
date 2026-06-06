@@ -2,6 +2,8 @@ services:
   gocast:
     build: .
     command: -service.debounce=3s
+    volumes:
+      - ./protos/proto-config/testdata/config.json:/etc/gocast/config.json
     ports:
       - 8080:8080
       - 8000:8000

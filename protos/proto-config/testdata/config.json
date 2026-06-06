@@ -1,0 +1,6 @@
+{
+  "fallbacks": {
+    "toto": ["bar", "baz"],
+    "tata": ["quu", "foo"]
+  }
+}

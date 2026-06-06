@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -19,6 +21,7 @@ import (
 	srt "github.com/datarhei/gosrt"
 	"github.com/rlibaert/gocast/domain"
 	"github.com/rlibaert/gocast/observability"
+	protoconfig "github.com/rlibaert/gocast/protos/proto-config"
 	protohttp "github.com/rlibaert/gocast/protos/proto-http"
 	protoicy "github.com/rlibaert/gocast/protos/proto-icy"
 	protosrt "github.com/rlibaert/gocast/protos/proto-srt"
@@ -30,6 +33,7 @@ func main() {
 	var (
 		logLevel              = slog.LevelInfo
 		svcDebounce           = flag.Duration("service.debounce", 15*time.Second, "Ingested stream healthy time")
+		configFilename        = flag.String("config.filename", "/etc/gocast/config.json", "Configuration file `path`")
 		httpReadHeaderTimeout = flag.Duration("http.read-header-timeout", 15*time.Second, "Time to read HTTP request headers")
 		httpAddr              = flag.String("http.addr", ":8080", "HTTP server binding `host:port`")
 		icyAddr               = flag.String("icy.addr", ":8000", "Icecast-like server binding `host:port`")
@@ -75,16 +79,60 @@ func main() {
 	svc := domain.NewService(svcHooks, streamCopy, *svcDebounce)
 	svc, metricsWriter := observability.ObservableService(svc, logger)
 
-	domain.ServiceResetFallbacks(svc, map[domain.StreamSub][]domain.StreamPub{
-		"toto": {"bar", "baz"},
-		"tata": {"quu", "foo"},
-	})
-
 	eg, ctx := errgroup.WithContext(ctx)
+	goWatchConfig(ctx, eg, svc, *configFilename, syscall.SIGHUP, logger)
 	goServeHTTP(ctx, eg, svc, *httpAddr, *httpReadHeaderTimeout, logger, metricsWriter)
 	goServeICY(ctx, eg, svc, *icyAddr, *httpReadHeaderTimeout, logger)
 	goServeSRT(ctx, eg, svc, *srtAddr, logger)
 	logger.Error("exiting", "err", eg.Wait(), "cause", context.Cause(ctx))
+}
+
+func generateFromJSONFile[T any](ch chan<- *T, filename string) error {
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	var v T
+	err = json.NewDecoder(f).Decode(&v)
+	if err != nil {
+		return err
+	}
+	ch <- &v
+
+	return nil
+}
+
+func goWatchConfig(
+	ctx context.Context,
+	eg *errgroup.Group,
+	svc domain.Service,
+	filename string,
+	reload os.Signal,
+	logger *slog.Logger,
+) {
+	configs := make(chan *protoconfig.Config)
+	protoconfig.ServiceRegisterer{Service: svc}.Register(configs)
+	eg.Go(func() error {
+		defer close(configs)
+
+		if err := generateFromJSONFile(configs, filename); err != nil {
+			return err
+		}
+
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, reload)
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+
+			case sig := <-sigs:
+				logger.Info("reloaded config", "signal", sig, "err", generateFromJSONFile(configs, filename))
+			}
+		}
+	})
 }
 
 func goServe(parent context.Context, eg *errgroup.Group, srv *http.Server) {
@@ -93,7 +141,7 @@ func goServe(parent context.Context, eg *errgroup.Group, srv *http.Server) {
 		srv.ErrorLog.Print("server shutting down")
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		return srv.Shutdown(ctx)
+		return errors.Join(srv.Shutdown(ctx), srv.Close())
 	})
 	eg.Go(func() error {
 		srv.ErrorLog.Print("server starting")
@@ -167,16 +215,24 @@ func goServeSRT(
 	}.Register(srv)
 
 	eg.Go(func() error {
-		<-ctx.Done()
-		srvErrorLog.Print("server shutting down")
-		srv.Shutdown()
-		return ctx.Err()
-	})
-
-	eg.Go(func() error {
 		srvErrorLog.Print("server starting")
 		defer srvErrorLog.Print("server stopped")
-		return srv.ListenAndServe()
+
+		err := srv.Listen()
+		if err != nil {
+			return err
+		}
+
+		// Making sure to start shutdown goroutine after listening because
+		// [srt.Server.ListenAndServe] still works after [srt.Server.Shutdown].
+		eg.Go(func() error {
+			<-ctx.Done()
+			srvErrorLog.Print("server shutting down")
+			srv.Shutdown()
+			return ctx.Err()
+		})
+
+		return srv.Serve()
 	})
 }
 
