@@ -75,6 +75,12 @@ func BenchmarkPubsub_Write10k(b *testing.B) {
 			require.NoError(b, err)
 		}()
 	}
+	go func() {
+		ps.WriteTo(internal.FuncWriter(func(p []byte) (int, error) {
+			time.Sleep(time.Second)
+			return len(p), nil
+		}))
+	}()
 
 	b.ResetTimer()
 	for b.Loop() {

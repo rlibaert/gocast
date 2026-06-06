@@ -53,7 +53,10 @@ func (ps *pubsub) Write(p []byte) (int, error) {
 		rb.b = append(rb.b[:0], p...)
 		rb.n = int64(len(ps.subs))
 		for _, ch := range ps.subs {
-			ch <- rb
+			select {
+			case ch <- rb:
+			default:
+			}
 		}
 	}
 
