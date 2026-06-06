@@ -3,6 +3,7 @@ services:
     build: .
     ports:
       - 8080:8080
+      - 8000:8000
 
   foo:
     image: jrottenberg/ffmpeg
@@ -18,7 +19,7 @@ services:
     command: |
       -hide_banner
       -re -f lavfi -i sine
-      -f adts icecast://gocast:8080/icy/bar
+      -f adts icecast://gocast:8000/bar
     depends_on:
       - gocast
 

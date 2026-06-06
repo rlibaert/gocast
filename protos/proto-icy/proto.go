@@ -20,7 +20,7 @@ func httpStatusTextError(w http.ResponseWriter, code int) {
 }
 
 func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
-	mux.HandleFunc("PUT /icy/{stream}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("PUT /{stream}", func(w http.ResponseWriter, r *http.Request) {
 		if http.CanonicalHeaderKey(r.Header.Get("Expect")) == "100-Continue" {
 			w.WriteHeader(http.StatusContinue)
 		}
@@ -36,7 +36,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		_, _ = reg.StreamsService.Publish(r.Context(), domain.StreamPub(stream), buf)
 	})
 
-	mux.HandleFunc("GET /icy/{stream}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /{stream}", func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		stream := r.PathValue("stream")
 
@@ -78,13 +78,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 			return
 		}
 
-		stream := q.Get("mount")
-		stream = strings.TrimPrefix(stream, "/")
-		stream, ok := strings.CutPrefix(stream, "icy/")
-		if !ok {
-			httpStatusTextError(w, http.StatusNotFound)
-			return
-		}
+		stream := strings.TrimPrefix(q.Get("mount"), "/")
 
 		var title string
 		switch {

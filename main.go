@@ -26,6 +26,7 @@ func main() {
 		logLevel              = slog.LevelInfo
 		httpAddr              = flag.String("http.addr", ":8080", "HTTP server binding `host:port`")
 		httpReadHeaderTimeout = flag.Duration("http.read-header-timeout", 15*time.Second, "")
+		icyAddr               = flag.String("icy.addr", ":8000", "Icecast-like server binding `host:port`")
 		srtAddr               = flag.String("srt.addr", ":6000", "SRT server binding `host:port`")
 		svcDebounce           = flag.Duration("service.debounce", 15*time.Second, "ingested stream healthy time")
 	)
@@ -75,9 +76,6 @@ func main() {
 		protohttp.ServiceRegisterer{
 			StreamsService: svc,
 		}.Register(mux)
-		protoicy.ServiceRegisterer{
-			StreamsService: svc,
-		}.Register(mux)
 		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 			metricsWriter(w, "gocast_")
 			for s, p := range domain.StreamsServiceStreamsMap(svc) {
@@ -103,6 +101,32 @@ func main() {
 
 		logger.Info("http server starting")
 		defer logger.Info("http server stopped")
+		return srv.ListenAndServe()
+	})
+
+	eg.Go(func() error {
+		mux := http.NewServeMux()
+		protoicy.ServiceRegisterer{
+			StreamsService: svc,
+		}.Register(mux)
+		srv := &http.Server{
+			BaseContext:       func(net.Listener) context.Context { return ctx },
+			ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
+			Addr:              *icyAddr,
+			ReadHeaderTimeout: *httpReadHeaderTimeout,
+			Handler:           mux,
+		}
+
+		eg.Go(func() error {
+			<-ctx.Done()
+			logger.Info("icy server shutting down")
+			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel2()
+			return srv.Shutdown(ctx2)
+		})
+
+		logger.Info("icy server starting")
+		defer logger.Info("icy server stopped")
 		return srv.ListenAndServe()
 	})
 
