@@ -14,7 +14,7 @@ type Pubsub interface {
 	io.WriterTo    // subscribers
 }
 
-var ErrPubsubClosed = errors.New("domain: pubsub closed")
+var errPubsubClosed = errors.New("pubsub: closed")
 
 // refbuf is a shared buffer with a reference counter.
 type refbuf struct {
@@ -31,8 +31,6 @@ type pubsub struct {
 	previous *refbuf
 	inflight *refbuf
 	subs     []chan<- *refbuf
-
-	subsWg sync.WaitGroup
 }
 
 func NewPubsub() Pubsub {
@@ -74,7 +72,7 @@ func (ps *pubsub) Write(p []byte) (int, error) {
 	defer ps.mu.Unlock()
 
 	if ps.closed {
-		return 0, ErrPubsubClosed
+		return 0, errPubsubClosed
 	}
 
 	ps.unref(ps.previous)
@@ -92,13 +90,11 @@ func (ps *pubsub) Write(p []byte) (int, error) {
 }
 
 func (ps *pubsub) Close() error {
-	defer ps.subsWg.Wait()
-
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
 	if ps.closed {
-		return ErrPubsubClosed
+		return errPubsubClosed
 	}
 	ps.closed = true
 
@@ -115,11 +111,8 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 	defer ps.mu.Unlock()
 
 	if ps.closed {
-		return 0, ErrPubsubClosed
+		return 0, errPubsubClosed
 	}
-
-	ps.subsWg.Add(1)
-	defer ps.subsWg.Done()
 
 	const refbufQueueSize = 8
 	ch := make(chan *refbuf, refbufQueueSize)
