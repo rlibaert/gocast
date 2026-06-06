@@ -36,7 +36,7 @@ type Service interface {
 	PublishTitle(context.Context, StreamPub, string) error
 
 	resetFallbacks(map[StreamSub][]StreamPub)
-	streamSubTitle(StreamSub) (string, bool)
+	streamSubTitle(StreamSub) *string
 	streamsMap() map[StreamSub]StreamPub
 }
 
@@ -44,7 +44,7 @@ func ServiceResetFallbacks(svc Service, m map[StreamSub][]StreamPub) {
 	svc.resetFallbacks(m)
 }
 
-func ServiceStreamSubTitle(svc Service, s StreamSub) (string, bool) {
+func ServiceStreamSubTitle(svc Service, s StreamSub) *string {
 	return svc.streamSubTitle(s)
 }
 
@@ -158,7 +158,6 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 	pubsub := &pubsub{Pubsub: internal.NewPubsub()}
 	defer pubsub.Close()
 
-	svc.streamsTitle.Store(s.AsSub(), "")
 	svc.streamsPubsub.Store(s.AsSub(), pubsub)
 	svc.wirings[s] = nil
 	svc.rewire(maps.Keys(svc.fallbacks))
@@ -206,7 +205,7 @@ func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (in
 	return ps.(internal.Pubsub).WriteTo(internal.ContextWriter{Context: ctx, Writer: w}) //nolint: errcheck // always valid
 }
 
-func (svc *service) PublishTitle(ctx context.Context, s StreamPub, title string) error {
+func (svc *service) PublishTitle(_ context.Context, s StreamPub, title string) error {
 	svc.mu.RLock()
 	defer svc.mu.RUnlock()
 
@@ -215,21 +214,19 @@ func (svc *service) PublishTitle(ctx context.Context, s StreamPub, title string)
 		return ErrStreamNotFound
 	}
 
-	svc.streamsTitle.Store(s.AsSub(), title)
+	svc.streamsTitle.Store(s.AsSub(), &title)
 	for _, sub := range subs {
-		svc.streamsTitle.Store(sub, title)
+		svc.streamsTitle.Store(sub, &title)
 	}
 
 	return nil
 }
 
-func (svc *service) streamSubTitle(s StreamSub) (string, bool) {
-	v, ok := svc.streamsTitle.Load(s)
-	if !ok {
-		return "", false
+func (svc *service) streamSubTitle(s StreamSub) *string {
+	if v, _ := svc.streamsTitle.Load(s); v != nil {
+		return v.(*string)
 	}
-
-	return v.(string), true
+	return nil
 }
 
 func (svc *service) streamsMap() map[StreamSub]StreamPub {

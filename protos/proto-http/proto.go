@@ -3,7 +3,6 @@ package proto
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 
@@ -60,17 +59,5 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		default:
 			httpStatusTextError(w, http.StatusInternalServerError)
 		}
-	})
-
-	mux.HandleFunc("GET /streams/{stream}/metadata", func(w http.ResponseWriter, r *http.Request) {
-		stream := r.PathValue("stream")
-		title, ok := domain.ServiceStreamSubTitle(reg.Service, domain.StreamSub(stream))
-		if !ok {
-			httpStatusTextError(w, http.StatusNotFound)
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/plain")
-		fmt.Fprintln(w, "title:", title)
 	})
 }
