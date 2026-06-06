@@ -23,24 +23,33 @@ type refbuf struct {
 }
 
 // pubsub implements [Pubsub].
+//
+// It uses pooling and reference counting to share data buffers among subscribers.
+// When a new buffer is written, it sends it to all current subscribers.
+// So subscribers can receive data immediately upon subscription, the publisher
+// keeps references of recent buffers. Sending more than just the buffer in
+// flight ensures subscribers always have enough data chunks to process
+// (as long as the production & consumption rates are equal).
 type pubsub struct {
 	refbufs sync.Pool
 
-	mu       sync.Mutex
-	closed   bool
-	previous *refbuf
-	inflight *refbuf
-	subs     []chan<- *refbuf
+	mu      sync.Mutex
+	closed  bool
+	recents [4]*refbuf
+	oldest  int
+	subs    []chan<- *refbuf
 }
 
 func NewPubsub() Pubsub {
-	return new(pubsub{
+	ps := new(pubsub{
 		refbufs: sync.Pool{
 			New: func() any { return new(refbuf) },
 		},
-		previous: &refbuf{b: nil, n: 1},
-		inflight: &refbuf{b: nil, n: 1},
 	})
+	for i := range ps.recents {
+		ps.recents[i] = ps.refbuf(nil, 1)
+	}
+	return ps
 }
 
 // refbuf returns a pooled [*refbuf] with the given bytes and reference count.
@@ -61,10 +70,10 @@ func (ps *pubsub) unref(rb *refbuf) {
 
 // replay increments references of recent [*refbuf]s and sends them to the given channel.
 func (ps *pubsub) replay(ch chan<- *refbuf) {
-	atomic.AddUint64(&ps.previous.n, 1)
-	ch <- ps.previous
-	atomic.AddUint64(&ps.inflight.n, 1)
-	ch <- ps.inflight
+	for _, rb := range append(ps.recents[ps.oldest:], ps.recents[:ps.oldest]...) {
+		ch <- rb
+		atomic.AddUint64(&rb.n, 1)
+	}
 }
 
 func (ps *pubsub) Write(p []byte) (int, error) {
@@ -75,16 +84,16 @@ func (ps *pubsub) Write(p []byte) (int, error) {
 		return 0, errPubsubClosed
 	}
 
-	ps.unref(ps.previous)
-	ps.previous = ps.inflight
-	ps.inflight = ps.refbuf(p, 1+uint64(len(ps.subs)))
+	ps.unref(ps.recents[ps.oldest])
+	ps.recents[ps.oldest] = ps.refbuf(p, 1+uint64(len(ps.subs)))
 	for _, ch := range ps.subs {
 		select {
-		case ch <- ps.inflight:
+		case ch <- ps.recents[ps.oldest]:
 		default:
-			ps.unref(ps.inflight)
+			ps.unref(ps.recents[ps.oldest])
 		}
 	}
+	ps.oldest = (ps.oldest + 1) % len(ps.recents)
 
 	return len(p), nil
 }
