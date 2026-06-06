@@ -2,14 +2,26 @@ package proto
 
 import "strconv"
 
-var (
-	// metaInt is the number of stream bytes written before sending in-band metadata.
-	metaInt = 16000
-	// metaIntStr is the string representation of [metaInt] to use as value for icy-metaint header.
-	metaIntStr = strconv.Itoa(metaInt)
-)
+// Metaint is the number of stream bytes written before sending in-band metadata.
+var Metaint = metaint{16000, "16000"}
 
-func SetMetaInt(v int) { metaInt, metaIntStr = v, strconv.Itoa(v) }
+type metaint struct {
+	int
+	string
+}
+
+func (m metaint) MarshalText() ([]byte, error) {
+	return []byte(m.string), nil
+}
+
+func (m *metaint) UnmarshalText(text []byte) error {
+	i, err := strconv.Atoi(string(text))
+	if err != nil {
+		return err
+	}
+	*m = metaint{i, string(text)}
+	return nil
+}
 
 // metadata takes ownership of the buffer to encode Icecast in-band metadata
 // and returns the new buffer.

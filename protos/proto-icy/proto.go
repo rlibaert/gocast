@@ -59,7 +59,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 			mbytes := metadata(nil)
 			writer = &paginatedWriter{
 				Writer:   w,
-				pageSize: metaInt,
+				pageSize: Metaint.int,
 				pageFooter: func() []byte {
 					if title, ok := domain.ServiceStreamSubTitle(reg.Service, domain.StreamSub(stream)); ok {
 						mbytes = metadata(mbytes, "StreamTitle='", title, "';")
@@ -67,7 +67,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 					return mbytes
 				},
 			}
-			w.Header().Set("Icy-Metaint", metaIntStr)
+			w.Header().Set("Icy-Metaint", Metaint.string)
 		}
 
 		w.Header().Set("Content-Type", "audio/mpeg")

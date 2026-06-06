@@ -33,6 +33,7 @@ func main() {
 		srtAddr               = flag.String("srt.addr", ":6000", "SRT server binding `host:port`")
 	)
 	flag.TextVar(&logLevel, "log.level", logLevel, "logging `level`")
+	flag.TextVar(&protoicy.Metaint, "icy.metaint", protoicy.Metaint, "Icecast in-band metadata `bytes` interval")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
