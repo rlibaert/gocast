@@ -35,16 +35,19 @@ type pubsub struct {
 
 	mu      sync.Mutex
 	closed  bool
-	recents [4]*refbuf
+	recents []*refbuf
 	oldest  int
 	subs    []chan<- *refbuf
 }
 
-func NewPubsub() Pubsub {
+// NewPubsub returns a new [Pubsub].
+// The burst argument specifies the number of extra writes to do upon subscription.
+func NewPubsub(burst int) Pubsub {
 	ps := new(pubsub{
 		refbufs: sync.Pool{
 			New: func() any { return new(refbuf) },
 		},
+		recents: make([]*refbuf, 1+burst),
 	})
 	for i := range ps.recents {
 		ps.recents[i] = ps.refbuf(nil, 1)
@@ -65,14 +68,6 @@ func (ps *pubsub) refbuf(p []byte, n uint64) *refbuf {
 func (ps *pubsub) unref(rb *refbuf) {
 	if atomic.AddUint64(&rb.n, ^uint64(0)) == 0 {
 		ps.refbufs.Put(rb)
-	}
-}
-
-// replay increments references of recent [*refbuf]s and sends them to the given channel.
-func (ps *pubsub) replay(ch chan<- *refbuf) {
-	for _, rb := range append(ps.recents[ps.oldest:], ps.recents[:ps.oldest]...) {
-		ch <- rb
-		atomic.AddUint64(&rb.n, 1)
 	}
 }
 
@@ -123,9 +118,12 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 		return 0, errPubsubClosed
 	}
 
-	const refbufQueueSize = 8
-	ch := make(chan *refbuf, refbufQueueSize)
-	ps.replay(ch)
+	ch := make(chan *refbuf, max(len(ps.recents)+4, 8))
+	for _, rb := range append(ps.recents[ps.oldest:], ps.recents[:ps.oldest]...) {
+		ch <- rb
+		atomic.AddUint64(&rb.n, 1)
+	}
+
 	ps.subs = append(ps.subs, ch)
 	defer func() {
 		// fast unordered delete

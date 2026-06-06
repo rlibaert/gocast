@@ -18,8 +18,16 @@ type pubsub struct {
 
 	chunk bytes.Buffer
 	start time.Time
+	dur   time.Duration
 
 	readers sync.WaitGroup
+}
+
+func newPubsub(burst int, dur time.Duration) *pubsub {
+	return &pubsub{
+		Pubsub: internal.NewPubsub(burst),
+		dur:    dur,
+	}
 }
 
 func (ps *pubsub) Flush() error {
@@ -29,7 +37,7 @@ func (ps *pubsub) Flush() error {
 
 func (ps *pubsub) Write(p []byte) (int, error) {
 	n, err := ps.chunk.Write(p)
-	if time.Since(ps.start) > time.Second {
+	if time.Since(ps.start) > ps.dur {
 		err = errors.Join(err, ps.Flush())
 		ps.start = time.Now()
 	}

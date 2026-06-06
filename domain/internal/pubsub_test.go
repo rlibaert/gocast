@@ -13,7 +13,7 @@ import (
 )
 
 func TestPubsub_data_copy(t *testing.T) {
-	ps := internal.NewPubsub()
+	ps := internal.NewPubsub(0)
 
 	wg := sync.WaitGroup{}
 	wg.Go(func() {
@@ -35,7 +35,7 @@ func TestPubsub_data_copy(t *testing.T) {
 }
 
 func BenchmarkPubsub_Write10k(b *testing.B) {
-	ps := internal.NewPubsub()
+	ps := internal.NewPubsub(0)
 	defer ps.Close()
 
 	buf := make([]byte, 4096)

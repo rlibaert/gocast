@@ -86,6 +86,10 @@ type service struct {
 	streamsTitle  sync.Map
 }
 
+func (svc *service) newPubsub() *pubsub {
+	return newPubsub(3, time.Second)
+}
+
 // rewire reassigns subs to their best [StreamPub] available.
 // It then tries to wire subs in the sequence, ignoring those already wired
 // or not yet wireable and creating or closing according [*pubsub].
@@ -124,7 +128,7 @@ wiring:
 				svc.wirings[pub] = append(svc.wirings[pub], sub)
 				title, _ := svc.streamsTitle.Load(pub.AsSub())
 				svc.streamsTitle.Store(sub, title)
-				svc.streamsPubsub.LoadOrStore(sub, &pubsub{Pubsub: internal.NewPubsub()})
+				svc.streamsPubsub.LoadOrStore(sub, svc.newPubsub())
 				continue wiring
 			}
 		}
@@ -156,7 +160,7 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 		return 0, ErrStreamExists
 	}
 
-	pubsub := &pubsub{Pubsub: internal.NewPubsub()}
+	pubsub := svc.newPubsub()
 	defer pubsub.Close()
 
 	svc.streamsPubsub.Store(s.AsSub(), pubsub)
