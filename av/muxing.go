@@ -3,7 +3,7 @@ package av
 /*
 #include <libavformat/avformat.h>
 
-extern int cgoRead(void *, uint8_t *, int);
+extern int cgoReaderRead(void *, uint8_t *, int);
 */
 import "C"
 import (
@@ -49,7 +49,7 @@ type discard struct{}
 
 func (discard) Mux(p *Packet) error { p.Unref(); return nil }
 
-var Discard Muxer = discard{}
+var Discard Muxer = discard{} //nolint: gochecknoglobals // as per [io.Discard]
 
 type demuxer struct {
 	reader *cgo.Handle
@@ -57,11 +57,10 @@ type demuxer struct {
 	fmt    *C.AVFormatContext
 }
 
-//export cgoRead
-func cgoRead(opaque unsafe.Pointer, buf *C.uint8_t, bufsize C.int) C.int {
-	n, err := (*cgo.Handle)(opaque).
-		Value().(io.Reader).
-		Read(unsafe.Slice((*byte)(buf), bufsize))
+//export cgoReaderRead
+func cgoReaderRead(opaque unsafe.Pointer, buf *C.uint8_t, bufsize C.int) C.int {
+	r := (*cgo.Handle)(opaque).Value().(io.Reader) //nolint: errcheck // always valid
+	n, err := r.Read(unsafe.Slice((*byte)(buf), bufsize))
 	if n > 0 {
 		return C.int(n)
 	}
@@ -82,7 +81,7 @@ type DemuxCloser interface {
 
 func NewDemuxer(r io.Reader) (DemuxCloser, error) {
 	reader := cgo.NewHandle(r)
-	readPacketArg, readPacket := unsafe.Pointer(&reader), (*[0]byte)(C.cgoRead)
+	readPacketArg, readPacket := unsafe.Pointer(&reader), (*[0]byte)(C.cgoReaderRead)
 	io := C.avio_alloc_context(nil, 0, 0, readPacketArg, readPacket, nil, nil)
 	fmt := C.avformat_alloc_context()
 	if io == nil || fmt == nil {

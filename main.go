@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net"
@@ -25,6 +26,7 @@ import (
 )
 
 func main() {
+	//nolint:golines
 	var (
 		logLevel              = slog.LevelInfo
 		svcDebounce           = flag.Duration("service.debounce", 15*time.Second, "Ingested stream healthy time")
@@ -65,12 +67,12 @@ func main() {
 		SubscribeStop: func(ctx context.Context, s domain.StreamSub, start time.Time) {
 			dur := time.Since(start)
 			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_in_flight{sub=%q}", "gocast_", s)).Dec()
-			metrics.GetOrCreateHistogram(fmt.Sprintf("%sstreams_sub_seconds{sub=%q}", "gocast_", s)).Update(dur.Seconds())
+			metrics.GetOrCreateHistogram(fmt.Sprintf("%sstreams_sub_seconds{sub=%q}", "gocast_", s)).Update(dur.Seconds()) //nolint:golines
 			logger.InfoContext(ctx, "unsubscribed", "stream", s, "dur_ms", dur.Milliseconds())
 		},
 	}
 
-	svc := domain.NewService(svcHooks, *svcDebounce)
+	svc := domain.NewService(svcHooks, streamCopy, *svcDebounce)
 	svc, metricsWriter := observability.ObservableService(svc, logger)
 
 	domain.ServiceResetFallbacks(svc, map[domain.StreamSub][]domain.StreamPub{
@@ -79,91 +81,103 @@ func main() {
 	})
 
 	eg, ctx := errgroup.WithContext(ctx)
+	goServeHTTP(ctx, eg, svc, *httpAddr, *httpReadHeaderTimeout, logger, metricsWriter)
+	goServeICY(ctx, eg, svc, *icyAddr, *httpReadHeaderTimeout, logger)
+	goServeSRT(ctx, eg, svc, *srtAddr, logger)
+	logger.Error("exiting", "err", eg.Wait(), "cause", context.Cause(ctx))
+}
 
+func goServe(parent context.Context, eg *errgroup.Group, srv *http.Server) {
 	eg.Go(func() error {
-		mux := http.NewServeMux()
-		protohttp.ServiceRegisterer{
-			Service: svc,
-		}.Register(mux)
-		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
-			metricsWriter(w, "gocast_")
-			for sub, pub := range domain.ServiceStreamsMap(svc) {
-				fmt.Fprintf(w, "%sstreams_map{pub=%q,sub=%q} 1\n", "gocast_", pub, sub)
-			}
-			metrics.WritePrometheus(w, true)
-		})
-		srv := &http.Server{
-			BaseContext:       func(net.Listener) context.Context { return ctx },
-			ErrorLog:          slog.NewLogLogger(logger.With("srv", "http").Handler(), slog.LevelWarn),
-			Addr:              *httpAddr,
-			ReadHeaderTimeout: *httpReadHeaderTimeout,
-			Handler:           mux,
-		}
-
-		eg.Go(func() error {
-			<-ctx.Done()
-			srv.ErrorLog.Print("server shutting down")
-			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Minute)
-			defer cancel2()
-			return srv.Shutdown(ctx2)
-		})
-
+		<-parent.Done()
+		srv.ErrorLog.Print("server shutting down")
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		return srv.Shutdown(ctx)
+	})
+	eg.Go(func() error {
 		srv.ErrorLog.Print("server starting")
 		defer srv.ErrorLog.Print("server stopped")
 		return srv.ListenAndServe()
 	})
+}
+
+func goServeHTTP(
+	ctx context.Context,
+	eg *errgroup.Group,
+	svc domain.Service,
+	addr string,
+	rht time.Duration,
+	logger *slog.Logger,
+	metricsWriter func(io.Writer, string),
+) {
+	mux := http.NewServeMux()
+	protohttp.ServiceRegisterer{Service: svc}.Register(mux)
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
+		metricsWriter(w, "gocast_")
+		for sub, pub := range domain.ServiceStreamsMap(svc) {
+			fmt.Fprintf(w, "%sstreams_map{pub=%q,sub=%q} 1\n", "gocast_", pub, sub)
+		}
+		metrics.WritePrometheus(w, true)
+	})
+	goServe(ctx, eg, &http.Server{
+		BaseContext:       func(net.Listener) context.Context { return ctx },
+		ErrorLog:          slog.NewLogLogger(logger.With("srv", "http").Handler(), slog.LevelWarn),
+		Addr:              addr,
+		ReadHeaderTimeout: rht,
+		Handler:           mux,
+	})
+}
+
+func goServeICY(
+	ctx context.Context,
+	eg *errgroup.Group,
+	svc domain.Service,
+	addr string,
+	rht time.Duration,
+	logger *slog.Logger,
+) {
+	mux := http.NewServeMux()
+	protoicy.ServiceRegisterer{Service: svc}.Register(mux)
+	goServe(ctx, eg, &http.Server{
+		BaseContext:       func(net.Listener) context.Context { return ctx },
+		ErrorLog:          slog.NewLogLogger(logger.With("srv", "icy").Handler(), slog.LevelWarn),
+		Addr:              addr,
+		ReadHeaderTimeout: rht,
+		Handler:           mux,
+	})
+}
+
+func goServeSRT(
+	ctx context.Context,
+	eg *errgroup.Group,
+	svc domain.Service,
+	addr string,
+	logger *slog.Logger,
+) {
+	srvErrorLog := slog.NewLogLogger(logger.With("srv", "srt").Handler(), slog.LevelWarn)
+	srv := &srt.Server{
+		Addr:   addr,
+		Config: new(srt.DefaultConfig()),
+	}
+	srv.Config.Logger = &srtLogger{srvErrorLog}
+	protosrt.ServiceRegisterer{
+		BaseContext: func() context.Context { return ctx },
+		Service:     svc,
+	}.Register(srv)
 
 	eg.Go(func() error {
-		mux := http.NewServeMux()
-		protoicy.ServiceRegisterer{
-			Service: svc,
-		}.Register(mux)
-		srv := &http.Server{
-			BaseContext:       func(net.Listener) context.Context { return ctx },
-			ErrorLog:          slog.NewLogLogger(logger.With("srv", "icy").Handler(), slog.LevelWarn),
-			Addr:              *icyAddr,
-			ReadHeaderTimeout: *httpReadHeaderTimeout,
-			Handler:           mux,
-		}
-
-		eg.Go(func() error {
-			<-ctx.Done()
-			srv.ErrorLog.Print("server shutting down")
-			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Minute)
-			defer cancel2()
-			return srv.Shutdown(ctx2)
-		})
-
-		srv.ErrorLog.Print("server starting")
-		defer srv.ErrorLog.Print("server stopped")
-		return srv.ListenAndServe()
+		<-ctx.Done()
+		srvErrorLog.Print("server shutting down")
+		srv.Shutdown()
+		return ctx.Err()
 	})
 
 	eg.Go(func() error {
-		srvErrorLog := slog.NewLogLogger(logger.With("srv", "srt").Handler(), slog.LevelWarn)
-		srv := &srt.Server{
-			Addr:   *srtAddr,
-			Config: new(srt.DefaultConfig()),
-		}
-		srv.Config.Logger = &srtLogger{srvErrorLog}
-		protosrt.ServiceRegisterer{
-			BaseContext: func() context.Context { return ctx },
-			Service:     svc,
-		}.Register(srv)
-
-		eg.Go(func() error {
-			<-ctx.Done()
-			srvErrorLog.Print("server shutting down")
-			srv.Shutdown()
-			return nil
-		})
-
 		srvErrorLog.Print("server starting")
 		defer srvErrorLog.Print("server stopped")
 		return srv.ListenAndServe()
 	})
-
-	logger.Error("exiting", "err", eg.Wait(), "cause", context.Cause(ctx))
 }
 
 type srtLogger struct{ l *log.Logger }

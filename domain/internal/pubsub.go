@@ -118,7 +118,10 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 		return 0, errPubsubClosed
 	}
 
-	ch := make(chan *refbuf, max(len(ps.recents)+4, 8))
+	ch := make(
+		chan *refbuf,
+		max(8, len(ps.recents)+4), //nolint: mnd // fit recent writes and have some room for slow writers
+	)
 	for _, rb := range append(ps.recents[ps.oldest:], ps.recents[:ps.oldest]...) {
 		ch <- rb
 		atomic.AddUint64(&rb.n, 1)

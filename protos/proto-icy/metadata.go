@@ -3,7 +3,7 @@ package proto
 import "strconv"
 
 // Metaint is the number of stream bytes written before sending in-band metadata.
-var Metaint = metaint{16000, "16000"}
+var Metaint = metaint{16000, "16000"} //nolint: gochecknoglobals // constant-ish
 
 type metaint struct {
 	int

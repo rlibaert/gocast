@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/rlibaert/gocast/domain"
-	. "github.com/rlibaert/gocast/domain"
 	"github.com/rlibaert/gocast/testing/assert"
 )
 
@@ -19,10 +18,10 @@ type rwFunc func(p []byte) (int, error)
 func (f rwFunc) Read(p []byte) (int, error)  { return f(p) }
 func (f rwFunc) Write(p []byte) (int, error) { return f(p) }
 
-func pubReader(throttle time.Duration, start func(), pub StreamPub) io.Reader {
+func pubReader(start func(), pub domain.StreamPub) io.Reader {
 	started := false
 	return rwFunc(func(p []byte) (int, error) {
-		time.Sleep(throttle)
+		time.Sleep(time.Millisecond)
 		if start != nil && !started {
 			start()
 			started = true
@@ -32,28 +31,35 @@ func pubReader(throttle time.Duration, start func(), pub StreamPub) io.Reader {
 }
 
 type ServiceTester struct {
-	Service Service
+	Service domain.Service
 }
+
+// baseDur is duration from which all relative deadlines are calculated.
+const baseDur = 5 * time.Second
 
 func (st ServiceTester) TestPublishSubscribe(t *testing.T) {
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
+	var (
+		dlPubStops = time.Now().Add(baseDur)
+	)
+
 	wgPubsPublishing := sync.WaitGroup{}
-	for _, pub := range []StreamPub{"foo", "bar"} {
+	for _, pub := range []domain.StreamPub{"foo", "bar"} {
 		wgPubsPublishing.Add(1)
 		wg.Go(func() {
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			ctx, cancel := context.WithDeadline(t.Context(), dlPubStops)
 			defer cancel()
 
-			n, err := st.Service.Publish(ctx, pub, pubReader(time.Millisecond, wgPubsPublishing.Done, pub))
+			n, err := st.Service.Publish(ctx, pub, pubReader(wgPubsPublishing.Done, pub))
 			assert.ErrIs(t, err, context.DeadlineExceeded)
 			assert.GT(t, n, 0)
 		})
 	}
 	wgPubsPublishing.Wait()
 
-	for _, sub := range []StreamSub{"foo", "bar", "foo", "bar"} {
+	for _, sub := range []domain.StreamSub{"foo", "bar", "foo", "bar"} {
 		wg.Go(func() {
 			ctx := t.Context()
 
@@ -72,24 +78,29 @@ func (st ServiceTester) TestFallback(t *testing.T) {
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
-	ServiceResetFallbacks(st.Service, map[StreamSub][]StreamPub{"toto": {"foo", "bar"}})
+	domain.ServiceResetFallbacks(st.Service, map[domain.StreamSub][]domain.StreamPub{"toto": {"foo", "bar"}})
+
+	var (
+		dlFooStops = time.Now().Add(baseDur)
+		dlBarStops = dlFooStops.Add(baseDur)
+	)
 
 	wgPubsPublishing := sync.WaitGroup{}
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		ctx, cancel := context.WithDeadline(t.Context(), dlFooStops)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "foo", pubReader(time.Millisecond, wgPubsPublishing.Done, "foo"))
+		n, err := st.Service.Publish(ctx, "foo", pubReader(wgPubsPublishing.Done, "foo"))
 		assert.ErrIs(t, err, context.DeadlineExceeded)
 		assert.GT(t, n, 0)
 	})
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		ctx, cancel := context.WithDeadline(t.Context(), dlBarStops)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "bar", pubReader(time.Millisecond, wgPubsPublishing.Done, "bar"))
+		n, err := st.Service.Publish(ctx, "bar", pubReader(wgPubsPublishing.Done, "bar"))
 		assert.ErrIs(t, err, context.DeadlineExceeded)
 		assert.GT(t, n, 0)
 	})
@@ -118,14 +129,20 @@ func (st ServiceTester) TestBackup(t *testing.T) {
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
-	ServiceResetFallbacks(st.Service, map[StreamSub][]StreamPub{"toto": {"foo", "bar"}})
+	domain.ServiceResetFallbacks(st.Service, map[domain.StreamSub][]domain.StreamPub{"toto": {"foo", "bar"}})
+
+	var (
+		dlFooStarts = time.Now().Add(baseDur)
+		dlFooStops  = dlFooStarts.Add(baseDur)
+		dlBarStops  = dlFooStops
+	)
 
 	wg.Go(func() {
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		time.Sleep(time.Until(dlFooStarts))
+		ctx, cancel := context.WithDeadline(t.Context(), dlFooStops)
 		defer cancel()
-		time.Sleep(5 * time.Second)
 
-		n, err := st.Service.Publish(ctx, "foo", pubReader(time.Millisecond, nil, "foo"))
+		n, err := st.Service.Publish(ctx, "foo", pubReader(nil, "foo"))
 		assert.ErrIs(t, err, context.DeadlineExceeded)
 		assert.GT(t, n, 0)
 	})
@@ -133,10 +150,10 @@ func (st ServiceTester) TestBackup(t *testing.T) {
 	wgPubsPublishing := sync.WaitGroup{}
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
-		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		ctx, cancel := context.WithDeadline(t.Context(), dlBarStops)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "bar", pubReader(time.Millisecond, wgPubsPublishing.Done, "bar"))
+		n, err := st.Service.Publish(ctx, "bar", pubReader(wgPubsPublishing.Done, "bar"))
 		assert.ErrIs(t, err, context.DeadlineExceeded)
 		assert.GT(t, n, 0)
 	})
@@ -165,28 +182,32 @@ func (st ServiceTester) TestPublishTitle(t *testing.T) {
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
+	var (
+		dlFoo = time.Now().Add(baseDur)
+	)
+
 	wgPubsPublishing := sync.WaitGroup{}
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		ctx, cancel := context.WithDeadline(t.Context(), dlFoo)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "foo", pubReader(time.Millisecond, wgPubsPublishing.Done, "foo"))
+		n, err := st.Service.Publish(ctx, "foo", pubReader(wgPubsPublishing.Done, "foo"))
 		assert.ErrIs(t, err, context.DeadlineExceeded)
 		assert.GT(t, n, 0)
 	})
 	wgPubsPublishing.Wait()
 
-	ServiceResetFallbacks(st.Service, map[StreamSub][]StreamPub{
+	domain.ServiceResetFallbacks(st.Service, map[domain.StreamSub][]domain.StreamPub{
 		"toto": {"foo"},
 		"tata": {"foo"},
 	})
 
 	const title = "lorem ipsum"
 	assert.ErrNil(t, st.Service.PublishTitle(t.Context(), "foo", title))
-	assert.EQ(t, *cmp.Or(ServiceStreamSubTitle(st.Service, "foo"), new("<nil>")), title)
-	assert.EQ(t, *cmp.Or(ServiceStreamSubTitle(st.Service, "toto"), new("<nil>")), title)
-	assert.EQ(t, *cmp.Or(ServiceStreamSubTitle(st.Service, "tata"), new("<nil>")), title)
+	assert.EQ(t, *cmp.Or(domain.ServiceStreamSubTitle(st.Service, "foo"), new("<nil>")), title)
+	assert.EQ(t, *cmp.Or(domain.ServiceStreamSubTitle(st.Service, "toto"), new("<nil>")), title)
+	assert.EQ(t, *cmp.Or(domain.ServiceStreamSubTitle(st.Service, "tata"), new("<nil>")), title)
 	assert.ErrIs(t, st.Service.PublishTitle(t.Context(), "bar", ""), domain.ErrStreamNotFound)
 }
 
@@ -194,19 +215,24 @@ func (st ServiceTester) TestCloseOnFallbacksRemoved(t *testing.T) {
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
+	var (
+		dlReset = time.Now().Add(baseDur)
+		dlFoo   = dlReset.Add(baseDur)
+	)
+
 	wg.Go(func() {
-		ServiceResetFallbacks(st.Service, map[StreamSub][]StreamPub{"toto": {"foo"}})
-		time.Sleep(2 * time.Second)
-		ServiceResetFallbacks(st.Service, map[StreamSub][]StreamPub{})
+		domain.ServiceResetFallbacks(st.Service, map[domain.StreamSub][]domain.StreamPub{"toto": {"foo"}})
+		time.Sleep(time.Until(dlReset))
+		domain.ServiceResetFallbacks(st.Service, map[domain.StreamSub][]domain.StreamPub{})
 	})
 
 	wgPubsPublishing := sync.WaitGroup{}
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		ctx, cancel := context.WithDeadline(t.Context(), dlFoo)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "foo", pubReader(time.Millisecond, wgPubsPublishing.Done, "foo"))
+		n, err := st.Service.Publish(ctx, "foo", pubReader(wgPubsPublishing.Done, "foo"))
 		assert.ErrIs(t, err, context.DeadlineExceeded)
 		assert.GT(t, n, 0)
 	})

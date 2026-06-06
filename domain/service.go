@@ -60,14 +60,19 @@ type ServiceHooks struct {
 	SubscribeStop  func(ctx context.Context, s StreamSub, start time.Time)
 }
 
+// ServiceStreamCopy is the default function for copying stream data.
+func ServiceStreamCopy(w io.Writer, r io.Reader) (int64, error) { return io.Copy(w, r) }
+
 func NewService(
 	hooks ServiceHooks,
+	streamCopy func(io.Writer, io.Reader) (int64, error),
 	debounce time.Duration,
 ) Service {
 	var svc Service = &service{
-		hooks:     hooks,
-		wirings:   map[StreamPub][]StreamSub{},
-		fallbacks: map[StreamSub][]StreamPub{},
+		hooks:      hooks,
+		streamCopy: streamCopy,
+		wirings:    map[StreamPub][]StreamSub{},
+		fallbacks:  map[StreamSub][]StreamPub{},
 	}
 	if debounce > 0 {
 		svc = serviceDebounced{svc, debounce}
@@ -76,7 +81,8 @@ func NewService(
 }
 
 type service struct {
-	hooks ServiceHooks
+	hooks      ServiceHooks
+	streamCopy func(io.Writer, io.Reader) (int64, error)
 
 	mu        sync.RWMutex
 	wirings   map[StreamPub][]StreamSub
@@ -87,13 +93,13 @@ type service struct {
 }
 
 func (svc *service) newPubsub() *pubsub {
-	return newPubsub(3, time.Second)
+	return newPubsub(3, time.Second) //nolint: mnd // nice defaults (writes every 1s, initial buffer > 3s)
 }
 
 // rewire reassigns subs to their best [StreamPub] available.
 // It then tries to wire subs in the sequence, ignoring those already wired
 // or not yet wireable and creating or closing according [*pubsub].
-func (svc *service) rewire(try iter.Seq[StreamSub]) {
+func (svc *service) rewire(try iter.Seq[StreamSub]) { //nolint: gocognit
 	var rewire []StreamSub
 	for pub, subs := range svc.wirings {
 		rewire = append(rewire, subs...)
@@ -113,7 +119,7 @@ rewiring:
 
 		svc.streamsTitle.Delete(sub)
 		if v, ok := svc.streamsPubsub.LoadAndDelete(sub); ok {
-			v.(*pubsub).Close()
+			v.(internal.Pubsub).Close() //nolint: errcheck,gosec // always valid
 		}
 	}
 
@@ -135,7 +141,7 @@ wiring:
 
 		svc.streamsTitle.Delete(sub)
 		if v, ok := svc.streamsPubsub.LoadAndDelete(sub); ok {
-			v.(*pubsub).Close()
+			v.(internal.Pubsub).Close() //nolint: errcheck,gosec // always valid
 		}
 	}
 }
@@ -179,7 +185,7 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 
 	svc.hooks.PublishStart(ctx, s)
 	defer svc.hooks.PublishStop(ctx, s, time.Now())
-	return StreamCopy(internal.WriterContext(ctx, svc.streamPubWriter(s)), r)
+	return svc.streamCopy(internal.WriterContext(ctx, svc.streamPubWriter(s)), r)
 }
 
 // streamPubWriter returns an [io.Writer] that writes every [StreamSub] mapped to [StreamPub].
@@ -196,10 +202,6 @@ func (svc *service) streamPubWriter(s StreamPub) io.Writer {
 		return len(p), nil
 	})
 }
-
-// StreamCopy is the function used to copy stream data.
-// It can be customized to control how data is copied.
-var StreamCopy = io.Copy
 
 func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (int64, error) {
 	ps, loaded := svc.streamsPubsub.Load(s)
@@ -231,7 +233,7 @@ func (svc *service) PublishTitle(_ context.Context, s StreamPub, title string) e
 
 func (svc *service) streamSubTitle(s StreamSub) *string {
 	if v, _ := svc.streamsTitle.Load(s); v != nil {
-		return v.(*string)
+		return v.(*string) //nolint: errcheck // always valid
 	}
 	return nil
 }
@@ -268,7 +270,7 @@ func (svc serviceDebounced) Publish(ctx context.Context, s StreamPub, r io.Reade
 
 // debounce reads the first bytes from the reader until the timeout is reached.
 // It returns the number of bytes read & the reading error, a replacement for the altered reader and a success flag.
-func (svc serviceDebounced) debounce(parent context.Context, r io.Reader) (int64, error, io.Reader, bool) { //nolint:revive // error is not an actual error
+func (svc serviceDebounced) debounce(parent context.Context, r io.Reader) (int64, error, io.Reader, bool) { //nolint:revive,staticcheck,golines // not an idiomatic error
 	var errStop error = struct{ error }{}
 
 	ctx, cancel := context.WithTimeoutCause(parent, svc.duration, errStop)
@@ -277,5 +279,5 @@ func (svc serviceDebounced) debounce(parent context.Context, r io.Reader) (int64
 	b := bytes.NewBuffer(nil)
 	n, err := b.ReadFrom(internal.ReaderContext(ctx, r))
 
-	return n, err, io.MultiReader(b, r), context.Cause(ctx) == errStop
+	return n, err, io.MultiReader(b, r), errors.Is(context.Cause(ctx), errStop)
 }

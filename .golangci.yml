@@ -232,6 +232,10 @@ linters:
       # Default: false
       check-type-assertions: true
 
+    errorlint:
+      allowed-errors-wildcard:
+        - err: "io.EOF"
+
     exhaustive:
       # Program elements to check for exhaustiveness.
       # Default: [ switch ]
@@ -313,6 +317,8 @@ linters:
           # Whether to skip (*x).method() calls where x is a pointer receiver.
           # Default: true
           skipRecvDeref: false
+      disabled-checks:
+        - dupSubExpr # See https://github.com/go-critic/go-critic/issues/897
 
     godoclint:
       # List of rules to enable in addition to the default set.
