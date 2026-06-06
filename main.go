@@ -55,34 +55,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	svcHooks := domain.ServiceHooks{
-		PublishStartStop: func(ctx context.Context, s domain.StreamPub) func() {
-			start := time.Now()
-			logger.InfoContext(ctx, "publishing", "stream", s)
-			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_total", "gocast_")).Inc()
-			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_in_flight", "gocast_")).Inc()
-			return func() {
-				dur := time.Since(start)
-				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_in_flight", "gocast_")).Dec()
-				metrics.GetOrCreateHistogram(fmt.Sprintf("%sstreams_pub_seconds", "gocast_")).Update(dur.Seconds())
-				logger.InfoContext(ctx, "unpublished", "stream", s, "dur_ms", dur.Milliseconds())
-			}
-		},
-		SubscribeStartStop: func(ctx context.Context, s domain.StreamSub) func() {
-			start := time.Now()
-			logger.InfoContext(ctx, "subscribing", "stream", s)
-			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_total{sub=%q}", "gocast_", s)).Inc()
-			metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_in_flight{sub=%q}", "gocast_", s)).Inc()
-			return func() {
-				dur := time.Since(start)
-				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_in_flight{sub=%q}", "gocast_", s)).Dec()
-				metrics.GetOrCreateHistogram(fmt.Sprintf("%sstreams_sub_seconds{sub=%q}", "gocast_", s)).Update(dur.Seconds()) //nolint:golines
-				logger.InfoContext(ctx, "unsubscribed", "stream", s, "dur_ms", dur.Milliseconds())
-			}
-		},
-	}
-
-	svc := domain.NewService(svcHooks, streamCopy, *svcDebounce)
+	svc := domain.NewService(serviceHooks(logger, metrics), serviceStreamCopy, *svcDebounce)
 	metrics.RegisterMetricsWriter(func(w io.Writer) {
 		for sub, pub := range domain.ServiceStreamsMap(svc) {
 			fmt.Fprintf(w, "%sstreams_map{pub=%q,sub=%q} 1\n", "gocast_", pub, sub)
