@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"iter"
 	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -33,8 +35,13 @@ type Service interface {
 	Subscribe(context.Context, StreamSub, io.Writer) (int64, error)
 	PublishTitle(context.Context, StreamPub, string) error
 
+	resetFallbacks(map[StreamSub][]StreamPub)
 	streamSubTitle(StreamSub) (string, bool)
 	streamsMap() map[StreamSub]StreamPub
+}
+
+func ServiceResetFallbacks(svc Service, m map[StreamSub][]StreamPub) {
+	svc.resetFallbacks(m)
 }
 
 func ServiceStreamSubTitle(svc Service, s StreamSub) (string, bool) {
@@ -57,8 +64,9 @@ func NewService(
 	debounce time.Duration,
 ) Service {
 	var svc Service = &service{
-		hooks:          hooks,
-		streamsMapping: map[StreamSub]StreamPub{},
+		hooks:     hooks,
+		wirings:   map[StreamPub][]StreamSub{},
+		fallbacks: map[StreamSub][]StreamPub{},
 	}
 	svc = serviceDebounced{svc, debounce}
 	return svc
@@ -67,34 +75,94 @@ func NewService(
 type service struct {
 	hooks ServiceHooks
 
-	mu             sync.RWMutex
-	streamsMapping map[StreamSub]StreamPub
-	streamsPubsub  sync.Map
-	streamsTitle   sync.Map
+	mu        sync.RWMutex
+	wirings   map[StreamPub][]StreamSub
+	fallbacks map[StreamSub][]StreamPub
+
+	streamsPubsub sync.Map
+	streamsTitle  sync.Map
+}
+
+// rewire reassigns subs to their best [StreamPub] available.
+// It then tries to wire subs in the sequence, ignoring those already wired
+// or not yet wireable and creating or closing according [*pubsub].
+func (svc *service) rewire(try iter.Seq[StreamSub]) {
+	var rewire []StreamSub
+	for pub, subs := range svc.wirings {
+		rewire = append(rewire, subs...)
+		svc.wirings[pub] = nil
+	}
+
+rewiring:
+	for _, sub := range rewire {
+		for _, pub := range svc.fallbacks[sub] {
+			if _, avail := svc.wirings[pub]; avail {
+				svc.wirings[pub] = append(svc.wirings[pub], sub)
+				continue rewiring
+			}
+		}
+		panic(map[string]any{
+			"msg":       "unable to rewire " + sub,
+			"rewire":    rewire,
+			"wirings":   svc.wirings,
+			"fallbacks": svc.fallbacks,
+		})
+	}
+
+wiring:
+	for sub := range try {
+		if slices.Contains(rewire, sub) {
+			continue
+		}
+		for _, pub := range svc.fallbacks[sub] {
+			if _, avail := svc.wirings[pub]; avail {
+				svc.wirings[pub] = append(svc.wirings[pub], sub)
+				svc.streamsPubsub.LoadOrStore(sub, &pubsub{Pubsub: internal.NewPubsub()})
+				continue wiring
+			}
+		}
+		if v, ok := svc.streamsPubsub.LoadAndDelete(sub); ok {
+			v.(*pubsub).Close()
+		}
+	}
+}
+
+func (svc *service) resetFallbacks(m map[StreamSub][]StreamPub) {
+	svc.mu.Lock()
+	defer svc.mu.Unlock()
+
+	svc.fallbacks = make(map[StreamSub][]StreamPub, len(m))
+	for sub, pubs := range m {
+		svc.fallbacks[sub] = slices.Clone(pubs)
+	}
+
+	svc.rewire(maps.Keys(svc.fallbacks))
 }
 
 func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
 	svc.mu.Lock()
 	defer svc.mu.Unlock()
 
-	if svc.streamsMapping[s.AsSub()] == s {
+	if _, ok := svc.wirings[s]; ok {
 		return 0, ErrStreamExists
 	}
-	svc.streamsMapping[s.AsSub()] = s
-	svc.streamsPubsub.LoadOrStore(s.AsSub(), &pubsub{Pubsub: internal.NewPubsub()})
+
+	svc.wirings[s] = nil
+	svc.rewire(maps.Keys(svc.fallbacks))
+	defer func() {
+		subs := svc.wirings[s]
+		delete(svc.wirings, s)
+		svc.rewire(slices.Values(subs))
+	}()
+
+	pubsub := &pubsub{Pubsub: internal.NewPubsub()}
+	defer pubsub.Close()
+
+	svc.streamsPubsub.Store(s.AsSub(), pubsub)
+	defer svc.streamsPubsub.Delete(s.AsSub())
 
 	svc.mu.Unlock()
-	defer func() {
-		svc.mu.Lock()
-
-		for sub, pub := range svc.streamsMapping {
-			if pub != s {
-				continue
-			}
-
-			svc.streamsMapping[sub] = "foo"
-		}
-	}()
+	defer svc.mu.Lock()
 
 	svc.hooks.PublishStart(ctx, s)
 	defer svc.hooks.PublishStop(ctx, s, time.Now())
@@ -107,11 +175,7 @@ func (svc *service) publish(s StreamPub, r io.Reader) (int64, error) {
 		svc.mu.RLock()
 		defer svc.mu.RUnlock()
 
-		for sub, pub := range svc.streamsMapping {
-			if pub != s {
-				continue
-			}
-
+		for _, sub := range append(svc.wirings[s], s.AsSub()) {
 			ps, _ := svc.streamsPubsub.Load(sub)
 			ps.(internal.Pubsub).Write(p) //nolint: errcheck,gosec // always valid and never fails
 		}
@@ -138,12 +202,8 @@ func (svc *service) PublishTitle(ctx context.Context, s StreamPub, title string)
 	defer svc.mu.RUnlock()
 
 	err := ErrStreamNotFound
-	for sub, pub := range svc.streamsMapping {
-		if pub != s {
-			continue
-		}
+	for _, sub := range append(svc.wirings[s], s.AsSub()) {
 		err = nil
-
 		svc.streamsTitle.Store(sub, title)
 	}
 
@@ -162,7 +222,16 @@ func (svc *service) streamSubTitle(s StreamSub) (string, bool) {
 func (svc *service) streamsMap() map[StreamSub]StreamPub {
 	svc.mu.RLock()
 	defer svc.mu.RUnlock()
-	return maps.Clone(svc.streamsMapping)
+
+	m := make(map[StreamSub]StreamPub)
+	for pub, subs := range svc.wirings {
+		m[pub.AsSub()] = pub
+		for _, sub := range subs {
+			m[sub] = pub
+		}
+	}
+
+	return m
 }
 
 type serviceDebounced struct {

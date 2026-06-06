@@ -71,6 +71,11 @@ func main() {
 	svc := domain.NewService(svcHooks, *svcDebounce)
 	svc, metricsWriter := observability.ObservableService(svc, logger)
 
+	domain.ServiceResetFallbacks(svc, map[domain.StreamSub][]domain.StreamPub{
+		"toto": {"bar", "baz"},
+		"tata": {"quu", "foo"},
+	})
+
 	eg, ctx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
@@ -80,8 +85,8 @@ func main() {
 		}.Register(mux)
 		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 			metricsWriter(w, "gocast_")
-			for s, p := range domain.ServiceStreamsMap(svc) {
-				fmt.Fprintf(w, "%sstreams_map{sub=%q,pub=%q} 1\n", "gocast_", s, p)
+			for sub, pub := range domain.ServiceStreamsMap(svc) {
+				fmt.Fprintf(w, "%sstreams_map{pub=%q,sub=%q} 1\n", "gocast_", pub, sub)
 			}
 			metrics.WritePrometheus(w, true)
 		})
