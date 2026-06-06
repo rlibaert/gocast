@@ -259,19 +259,19 @@ func (svc serviceDebounced) Publish(ctx context.Context, s StreamPub, r io.Reade
 	type stopError struct{ error }
 
 	t := time.Now().Add(svc.duration)
-	b := bytes.NewBuffer(nil)
 	w := internal.FuncWriter(func(p []byte) (int, error) {
 		if time.Now().After(t) {
 			return 0, stopError{}
 		}
-		return b.Write(p)
+		return io.Discard.Write(p)
 	})
 
-	n, err := io.Copy(w, r)
+	b := bytes.NewBuffer(nil)
+	n, err := io.Copy(w, io.TeeReader(r, b))
 	if err != error(stopError{}) { //nolint: errorlint // function-scoped error type returned right above
 		return n, err
 	}
-	b, r = nil, io.MultiReader(b, r)
+	b, r = nil, io.MultiReader(b, r) // permit GC & merge buffer back into reader
 
 	m, err := svc.Service.Publish(ctx, s, r)
 	return n + m, err
