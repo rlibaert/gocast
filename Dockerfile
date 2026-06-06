@@ -10,6 +10,7 @@ RUN tar -xJf ffmpeg-8.1.tar.xz && \
         --disable-all \
         --enable-avutil --enable-avformat --enable-avcodec \
         --enable-demuxer=mp3,aac \
+        --enable-parser=mpegaudio,aac* \
         --enable-decoder=mp3*,aac* \
     && \
     make -j$(nproc) && \
