@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"errors"
 	"io"
 )
 
@@ -32,7 +31,7 @@ type ContextReader struct {
 func (r ContextReader) Read(p []byte) (int, error) {
 	select {
 	case <-r.Context.Done():
-		return 0, errors.Join(io.EOF, r.Context.Err())
+		return 0, r.Context.Err()
 	default:
 		return r.Reader.Read(p)
 	}

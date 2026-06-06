@@ -3,7 +3,6 @@ package proto
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 
 	"github.com/rlibaert/gocast/domain"
@@ -24,7 +23,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 
 		_, err := reg.Service.Publish(ctx, domain.StreamPub(stream), r.Body)
 		switch {
-		case errors.Is(err, nil), errors.Is(err, context.Canceled), errors.Is(err, io.EOF):
+		case errors.Is(err, nil), errors.Is(err, context.Canceled):
 		case errors.Is(err, domain.ErrStreamExists):
 			httpStatusTextError(w, http.StatusLocked)
 		default:
@@ -39,7 +38,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		stream := r.PathValue("stream")
 		_, err := reg.Service.Subscribe(ctx, domain.StreamSub(stream), w)
 		switch {
-		case errors.Is(err, nil), errors.Is(err, context.Canceled), errors.Is(err, io.EOF):
+		case errors.Is(err, nil), errors.Is(err, context.Canceled):
 		case errors.Is(err, domain.ErrStreamNotFound):
 			httpStatusTextError(w, http.StatusNotFound)
 		default:

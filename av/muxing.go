@@ -7,7 +7,6 @@ extern int cgoRead(void *, uint8_t *, int);
 */
 import "C"
 import (
-	"errors"
 	"io"
 	"runtime/cgo"
 	"unsafe"
@@ -25,7 +24,7 @@ type (
 func RemuxPacket(m Muxer, d Demuxer, p *Packet) (int64, error) {
 	for count := int64(0); ; count++ {
 		err := d.Demux(p)
-		if errors.Is(err, io.EOF) {
+		if err == io.EOF {
 			return count, nil
 		}
 		if err == nil {
@@ -66,10 +65,10 @@ func cgoRead(opaque unsafe.Pointer, buf *C.uint8_t, bufsize C.int) C.int {
 	if n > 0 {
 		return C.int(n)
 	}
-	switch {
-	case errors.Is(err, nil):
+	switch err {
+	case nil:
 		return 0
-	case errors.Is(err, io.EOF):
+	case io.EOF:
 		return C.AVERROR_EOF
 	default:
 		return C.AVERROR_EXTERNAL
@@ -120,7 +119,7 @@ func (d *demuxer) Demux(p *Packet) error {
 	if err := C.av_read_frame(d.fmt, (*C.AVPacket)(p)); err < 0 {
 		switch err {
 		case C.AVERROR_EOF:
-			return errors.Join(io.EOF, Error(err))
+			return io.EOF
 		default:
 			return Error(err)
 		}

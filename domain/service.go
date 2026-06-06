@@ -175,12 +175,12 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 
 	svc.hooks.PublishStart(ctx, s)
 	defer svc.hooks.PublishStop(ctx, s, time.Now())
-	return svc.publish(s, internal.ContextReader{Context: ctx, Reader: r})
+	return StreamCopy(internal.ContextWriter{Context: ctx, Writer: svc.streamPubWriter(s)}, r)
 }
 
-// publish copies from r to every [StreamSub] mapped to [StreamPub].
-func (svc *service) publish(s StreamPub, r io.Reader) (int64, error) {
-	w := internal.FuncWriter(func(p []byte) (int, error) {
+// streamPubWriter returns an [io.Writer] that writes every [StreamSub] mapped to [StreamPub].
+func (svc *service) streamPubWriter(s StreamPub) io.Writer {
+	return internal.FuncWriter(func(p []byte) (int, error) {
 		svc.mu.RLock()
 		defer svc.mu.RUnlock()
 
@@ -191,8 +191,6 @@ func (svc *service) publish(s StreamPub, r io.Reader) (int64, error) {
 
 		return len(p), nil
 	})
-
-	return StreamCopy(w, r)
 }
 
 // StreamCopy is the function used to copy stream data.
