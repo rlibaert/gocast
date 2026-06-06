@@ -24,12 +24,15 @@ type refbuf struct {
 
 // pubsub implements [Pubsub].
 type pubsub struct {
-	mu     sync.Mutex
-	closed bool
-	subs   []chan<- *refbuf
-	subsWg sync.WaitGroup
-
 	refbufs sync.Pool
+
+	mu       sync.Mutex
+	closed   bool
+	previous *refbuf
+	inflight *refbuf
+	subs     []chan<- *refbuf
+
+	subsWg sync.WaitGroup
 }
 
 func NewPubsub() Pubsub {
@@ -37,6 +40,8 @@ func NewPubsub() Pubsub {
 		refbufs: sync.Pool{
 			New: func() any { return new(refbuf) },
 		},
+		previous: &refbuf{b: nil, n: 1},
+		inflight: &refbuf{b: nil, n: 1},
 	})
 }
 
@@ -56,6 +61,14 @@ func (ps *pubsub) unref(rb *refbuf) {
 	}
 }
 
+// replay increments references of recent [*refbuf]s and sends them to the given channel.
+func (ps *pubsub) replay(ch chan<- *refbuf) {
+	atomic.AddUint64(&ps.previous.n, 1)
+	ch <- ps.previous
+	atomic.AddUint64(&ps.inflight.n, 1)
+	ch <- ps.inflight
+}
+
 func (ps *pubsub) Write(p []byte) (int, error) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
@@ -64,14 +77,14 @@ func (ps *pubsub) Write(p []byte) (int, error) {
 		return 0, ErrPubsubClosed
 	}
 
-	if len(ps.subs) != 0 {
-		rb := ps.refbuf(p, uint64(len(ps.subs)))
-		for _, ch := range ps.subs {
-			select {
-			case ch <- rb:
-			default:
-				ps.unref(rb)
-			}
+	ps.unref(ps.previous)
+	ps.previous = ps.inflight
+	ps.inflight = ps.refbuf(p, 1+uint64(len(ps.subs)))
+	for _, ch := range ps.subs {
+		select {
+		case ch <- ps.inflight:
+		default:
+			ps.unref(ps.inflight)
 		}
 	}
 
@@ -107,6 +120,7 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 
 	const refbufQueueSize = 8
 	ch := make(chan *refbuf, refbufQueueSize)
+	ps.replay(ch)
 	ps.subs = append(ps.subs, ch)
 	ps.subsWg.Add(1)
 
