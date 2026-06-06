@@ -1,0 +1,23 @@
+services:
+  gocast:
+    build: .
+    ports:
+      - 8080:8080
+
+  foo:
+    image: jrottenberg/ffmpeg
+    command: |
+      -hide_banner
+      -re -f lavfi -i sine
+      -f mp3 http://gocast:8080/streams/foo
+    depends_on:
+      - gocast
+
+  bar:
+    image: jrottenberg/ffmpeg
+    command: |
+      -hide_banner
+      -re -f lavfi -i sine
+      -f adts srt://gocast:6000?streamid=pub:bar
+    depends_on:
+      - gocast
