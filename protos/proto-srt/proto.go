@@ -19,11 +19,11 @@ func (reg ServiceRegisterer) Register(s *srt.Server) {
 	}
 
 	s.HandleConnect = func(req srt.ConnRequest) srt.ConnType {
-		if verb, _, ok := strings.Cut(req.StreamId(), ":"); ok {
-			switch verb {
-			case "pub":
+		if req.Version() == 5 { //nolint:mnd // SRT version number
+			switch verb, _, ok := strings.Cut(req.StreamId(), ":"); {
+			case verb == "pub" && ok:
 				return srt.PUBLISH
-			case "sub":
+			case verb == "sub" && ok:
 				return srt.SUBSCRIBE
 			}
 		}
