@@ -9,12 +9,11 @@ import "C"
 import (
 	"io"
 	"runtime/cgo"
+	"syscall"
 	"unsafe"
 )
 
 type Packet C.AVPacket
-
-func (p *Packet) Unref() { C.av_packet_unref((*C.AVPacket)(p)) }
 
 type (
 	Demuxer interface{ Demux(*Packet) error }
@@ -39,7 +38,7 @@ func RemuxPacket(m Muxer, d Demuxer, p *Packet) (int64, error) {
 func Remux(m Muxer, d Demuxer) (int64, error) {
 	p := C.av_packet_alloc()
 	if p == nil {
-		return 0, errNomem
+		return 0, syscall.ENOMEM
 	}
 	defer C.av_packet_free(&p)
 	return RemuxPacket(m, d, (*Packet)(p))
@@ -47,7 +46,10 @@ func Remux(m Muxer, d Demuxer) (int64, error) {
 
 type discard struct{}
 
-func (discard) Mux(p *Packet) error { p.Unref(); return nil }
+func (discard) Mux(p *Packet) error {
+	C.av_packet_unref((*C.AVPacket)(p))
+	return nil
+}
 
 var Discard Muxer = discard{} //nolint: gochecknoglobals // as per [io.Discard]
 
@@ -88,7 +90,7 @@ func NewDemuxer(r io.Reader) (DemuxCloser, error) {
 		C.avformat_free_context(fmt)
 		C.avio_context_free(&io)
 		reader.Delete()
-		return nil, errNomem
+		return nil, syscall.ENOMEM
 	}
 	io.direct |= C.AVIO_FLAG_DIRECT
 	fmt.pb = io

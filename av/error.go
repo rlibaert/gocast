@@ -1,10 +1,7 @@
 package av
 
 /*
-#include <errno.h>
 #include <libavutil/error.h>
-
-#define AVERROR_NOMEM AVERROR(ENOMEM)
 */
 import "C"
 import (
@@ -14,10 +11,6 @@ import (
 
 // Error turns libav* error codes into Go errors.
 type Error C.int
-
-const (
-	errNomem = Error(C.AVERROR_NOMEM)
-)
 
 func (e Error) Error() string {
 	const prefix = "av: "
