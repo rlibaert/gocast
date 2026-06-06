@@ -13,16 +13,17 @@ import (
 func ObservableService(
 	svc domain.Service,
 	logger *slog.Logger,
-) (domain.Service, func(io.Writer, string)) {
+	metricsPrefix string,
+) (domain.Service, func(io.Writer)) {
 	observable := observableService{
 		svc,
 		newLogsFunc(logger),
 		newMetricsMap(methodsFor[domain.Service](true)...),
 	}
-	return observable, func(w io.Writer, prefix string) {
+	return observable, func(w io.Writer) {
 		for k, v := range observable.metrics {
-			fmt.Fprintf(w, "%sfunc_calls_total{name=%q} %d\n", prefix, k, v.total.Load())
-			fmt.Fprintf(w, "%sfunc_calls_in_flight{name=%q} %d\n", prefix, k, v.inFlight.Load())
+			fmt.Fprintf(w, "%sfunc_calls_total{name=%q} %d\n", metricsPrefix, k, v.total.Load())
+			fmt.Fprintf(w, "%sfunc_calls_in_flight{name=%q} %d\n", metricsPrefix, k, v.inFlight.Load())
 		}
 	}
 }

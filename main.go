@@ -48,6 +48,10 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
+	metricsWriterProcess := metrics.WriteProcessMetrics
+	metrics := metrics.NewSet()
+	metrics.RegisterMetricsWriter(metricsWriterProcess)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -77,11 +81,18 @@ func main() {
 	}
 
 	svc := domain.NewService(svcHooks, streamCopy, *svcDebounce)
-	svc, metricsWriter := observability.ObservableService(svc, logger)
+	metrics.RegisterMetricsWriter(func(w io.Writer) {
+		for sub, pub := range domain.ServiceStreamsMap(svc) {
+			fmt.Fprintf(w, "%sstreams_map{pub=%q,sub=%q} 1\n", "gocast_", pub, sub)
+		}
+	})
+
+	svc, svcMetricsWriter := observability.ObservableService(svc, logger, "gocast_")
+	metrics.RegisterMetricsWriter(svcMetricsWriter)
 
 	eg, ctx := errgroup.WithContext(ctx)
 	goWatchConfig(ctx, eg, svc, *configFilename, syscall.SIGHUP, logger)
-	goServeHTTP(ctx, eg, svc, *httpAddr, *httpReadHeaderTimeout, logger, metricsWriter)
+	goServeHTTP(ctx, eg, svc, *httpAddr, *httpReadHeaderTimeout, logger, metrics)
 	goServeICY(ctx, eg, svc, *icyAddr, *httpReadHeaderTimeout, logger)
 	goServeSRT(ctx, eg, svc, *srtAddr, logger)
 	logger.Error("exiting", "err", eg.Wait(), "cause", context.Cause(ctx))
@@ -157,16 +168,12 @@ func goServeHTTP(
 	addr string,
 	rht time.Duration,
 	logger *slog.Logger,
-	metricsWriter func(io.Writer, string),
+	metrics *metrics.Set,
 ) {
 	mux := http.NewServeMux()
 	protohttp.ServiceRegisterer{Service: svc}.Register(mux)
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
-		metricsWriter(w, "gocast_")
-		for sub, pub := range domain.ServiceStreamsMap(svc) {
-			fmt.Fprintf(w, "%sstreams_map{pub=%q,sub=%q} 1\n", "gocast_", pub, sub)
-		}
-		metrics.WritePrometheus(w, true)
+		metrics.WritePrometheus(w)
 	})
 	goServe(ctx, eg, &http.Server{
 		BaseContext:       func(net.Listener) context.Context { return ctx },
