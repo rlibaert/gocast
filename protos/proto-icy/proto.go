@@ -62,7 +62,7 @@ func (reg ServiceRegisterer) getStream(w http.ResponseWriter, r *http.Request) {
 
 	var writer io.Writer = w
 	if r.Header.Get("Icy-Metadata") == "1" {
-		mtitle, mbytes := (*string)(nil), metadata(nil)
+		mtitle, mbytes := (*string)(nil), Metadata(nil)
 		writer = &paginatedWriter{
 			Writer:   w,
 			pageSize: Metaint.int,
@@ -72,9 +72,9 @@ func (reg ServiceRegisterer) getStream(w http.ResponseWriter, r *http.Request) {
 				case mtitle:
 					// no changes
 				case nil:
-					mtitle, mbytes = t, metadata(mbytes)
+					mtitle, mbytes = t, Metadata(mbytes)
 				default:
-					mtitle, mbytes = t, metadata(mbytes, "StreamTitle='", *t, "';")
+					mtitle, mbytes = t, Metadata(mbytes, "StreamTitle='", *t, "';")
 				}
 				return mbytes
 			},

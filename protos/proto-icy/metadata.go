@@ -23,7 +23,7 @@ func (m *metaint) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// metadata takes ownership of the buffer to encode Icecast in-band metadata
+// Metadata takes ownership of the buffer to encode Icecast in-band metadata
 // and returns the new buffer.
 //
 // The encoding consists in:
@@ -38,8 +38,8 @@ func (m *metaint) UnmarshalText(text []byte) error {
 //
 // Usage example:
 //
-//	_ = metadata(nil, "StreamTitle='", title, "';")
-func metadata(buf []byte, elems ...string) []byte {
+//	_ = Metadata(nil, "StreamTitle='", title, "';")
+func Metadata(buf []byte, elems ...string) []byte {
 	buf = append(buf[:0], 0)
 	if len(elems) == 0 {
 		return buf
@@ -48,20 +48,16 @@ func metadata(buf []byte, elems ...string) []byte {
 	for _, elem := range elems {
 		buf = append(buf, elem...)
 	}
-	buf = append(buf, '0') // NUL-terminate the string
 
 	type block [16]byte
-	blocks := len(buf[1:]) / len(block{})
-	remain := len(buf[1:]) % len(block{})
-	if remain != 0 {
-		var padding block
-		buf = append(buf, padding[remain:]...)
-		blocks++
-	}
-
 	const blocksLimit = ^byte(0)
+
+	remain := len(buf[1:]) % len(block{})
+	buf = append(buf, new(block)[remain:]...) // adds at least 1 NUL byte
+
+	blocks := len(buf[1:]) / len(block{})
 	if blocks > int(blocksLimit) {
-		return metadata(buf) // TODO: log
+		return Metadata(buf) // TODO: log
 	}
 	buf[0] = byte(blocks)
 
