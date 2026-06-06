@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/VictoriaMetrics/metrics"
 	srt "github.com/datarhei/gosrt"
 	"github.com/rlibaert/gocast/domain"
 	"github.com/rlibaert/gocast/observability"
@@ -44,15 +46,25 @@ func main() {
 		domain.StreamingServiceHooks{
 			StreamPubStart: func(ctx context.Context, s domain.StreamPub) {
 				logger.InfoContext(ctx, "StreamingServiceHooks.StreamPubStart", "stream", s)
+				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_total", "gocast_")).Inc()
+				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_in_flight", "gocast_")).Inc()
 			},
 			StreamPubStop: func(ctx context.Context, s domain.StreamPub, start time.Time) {
-				logger.InfoContext(ctx, "StreamingServiceHooks.StreamPubStop", "stream", s, "dur", time.Since(start))
+				dur := time.Since(start)
+				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_pub_in_flight", "gocast_")).Dec()
+				metrics.GetOrCreateHistogram(fmt.Sprintf("%sstreams_pub_seconds{sub=%q}", "gocast_", s)).Update(dur.Seconds())
+				logger.InfoContext(ctx, "StreamingServiceHooks.StreamPubStop", "stream", s, "dur", dur)
 			},
 			StreamSubStart: func(ctx context.Context, s domain.StreamSub) {
 				logger.InfoContext(ctx, "StreamingServiceHooks.StreamSubStart", "stream", s)
+				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_total{sub=%q}", "gocast_", s)).Inc()
+				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_in_flight{sub=%q}", "gocast_", s)).Inc()
 			},
 			StreamSubStop: func(ctx context.Context, s domain.StreamSub, start time.Time) {
-				logger.InfoContext(ctx, "StreamingServiceHooks.StreamSubStop", "stream", s, "dur", time.Since(start))
+				dur := time.Since(start)
+				metrics.GetOrCreateCounter(fmt.Sprintf("%sstreams_sub_in_flight{sub=%q}", "gocast_", s)).Dec()
+				metrics.GetOrCreateHistogram(fmt.Sprintf("%sstreams_sub_seconds{sub=%q}", "gocast_", s)).Update(dur.Seconds())
+				logger.InfoContext(ctx, "StreamingServiceHooks.StreamSubStop", "stream", s, "dur", dur)
 			},
 		},
 		*svcDebounce,
@@ -69,6 +81,10 @@ func main() {
 		}.Register(mux)
 		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 			metricsWriter(w, "gocast_")
+			for s, p := range domain.StreamingServiceStreamsMap(svc) {
+				fmt.Fprintf(w, "%sstreams_map{sub=%q,pub=%q} 1\n", "gocast_", s, p)
+			}
+			metrics.WritePrometheus(w, true)
 		})
 		srv := &http.Server{
 			BaseContext:       func(net.Listener) context.Context { return ctx },

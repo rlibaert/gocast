@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,6 +33,12 @@ func (s StreamPub) AsSub() StreamSub { return StreamSub(s) }
 type StreamingService interface {
 	Publish(context.Context, StreamPub, io.Reader) (int64, error)
 	Subscribe(context.Context, StreamSub, io.Writer) (int64, error)
+
+	streamsMap() map[StreamSub]StreamPub
+}
+
+func StreamingServiceStreamsMap(svc StreamingService) map[StreamSub]StreamPub {
+	return svc.streamsMap()
 }
 
 type StreamingServiceHooks struct {
@@ -123,6 +130,12 @@ func (svc *streamingService) Subscribe(ctx context.Context, s StreamSub, w io.Wr
 		defer svc.hooks.StreamSubStop(ctx, s, time.Now())
 		return ps.(internal.Pubsub).WriteTo(w) //nolint: errcheck // always valid
 	}
+}
+
+func (svc *streamingService) streamsMap() map[StreamSub]StreamPub {
+	svc.mu.RLock()
+	defer svc.mu.RUnlock()
+	return maps.Clone(svc.streamsMapping)
 }
 
 // streamingPubsub wraps an [internal.Pubsub] to buffer writes and burst data when a new subscriber connects.
