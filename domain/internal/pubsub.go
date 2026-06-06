@@ -29,7 +29,13 @@ type pubsub struct {
 // refbuf is a shared buffer with a reference counter.
 type refbuf struct {
 	b []byte
-	n int64
+	n uint64
+}
+
+// unref atomically decrements the reference counter
+// and returns the number of remaining references.
+func (rb *refbuf) unref() uint64 {
+	return atomic.AddUint64(&rb.n, ^uint64(0))
 }
 
 func NewPubsub() Pubsub {
@@ -51,7 +57,7 @@ func (ps *pubsub) Write(p []byte) (int, error) {
 	if len(ps.subs) != 0 {
 		rb := ps.refbufs.Get().(*refbuf) //nolint: errcheck // always a non-nil [*refbuf]
 		rb.b = append(rb.b[:0], p...)
-		rb.n = int64(len(ps.subs))
+		rb.n = uint64(len(ps.subs))
 		for _, ch := range ps.subs {
 			select {
 			case ch <- rb:
@@ -110,7 +116,7 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 	n := int64(0)
 	for rb := range ch {
 		wn, werr := w.Write(rb.b)
-		if atomic.AddInt64(&rb.n, -1) == 0 {
+		if rb.unref() == 0 {
 			ps.refbufs.Put(rb)
 		}
 		n += int64(wn)
