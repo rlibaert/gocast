@@ -47,3 +47,10 @@ func (svc observableStreamsService) Subscribe(ctx context.Context, s domain.Stre
 	defer svc.metrics[fname].in().out()
 	return svc.StreamsService.Subscribe(ctx, s, w)
 }
+
+func (svc observableStreamsService) PublishTitle(ctx context.Context, s domain.StreamPub, title string) (err error) { //nolint: golines,nonamedreturns // simpler use with defer
+	const fname = "StreamsService.PublishTitle"
+	defer svc.logs(fname).in(s, title).out(time.Now(), &err)
+	defer svc.metrics[fname].in().out()
+	return svc.StreamsService.PublishTitle(ctx, s, title)
+}

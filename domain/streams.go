@@ -32,8 +32,14 @@ func (s StreamPub) AsSub() StreamSub { return StreamSub(s) }
 type StreamsService interface {
 	Publish(context.Context, StreamPub, io.Reader) (int64, error)
 	Subscribe(context.Context, StreamSub, io.Writer) (int64, error)
+	PublishTitle(context.Context, StreamPub, string) error
 
+	streamSubTitle(StreamSub) (string, bool)
 	streamsMap() map[StreamSub]StreamPub
+}
+
+func StreamsServiceStreamSubTitle(svc StreamsService, s StreamSub) (string, bool) {
+	return svc.streamSubTitle(s)
 }
 
 func StreamsServiceStreamsMap(svc StreamsService) map[StreamSub]StreamPub {
@@ -127,6 +133,40 @@ func (svc *streamsService) Subscribe(ctx context.Context, s StreamSub, w io.Writ
 	return ps.(*streamsPubsub).WriteTo(w) //nolint: errcheck // always valid
 }
 
+func (svc *streamsService) PublishTitle(ctx context.Context, s StreamPub, title string) error {
+	svc.mu.RLock()
+	defer svc.mu.RUnlock()
+
+	err := ErrStreamNotFound
+	for sub, pub := range svc.streamsMapping {
+		if pub != s {
+			continue
+		}
+		err = nil
+
+		ps, _ := svc.streamsPubsub.Load(sub)
+		if ps != nil {
+			ps.(*streamsPubsub).metadata.Store("title", title)
+		}
+	}
+
+	return err
+}
+
+func (svc *streamsService) streamSubTitle(s StreamSub) (string, bool) {
+	ps, loaded := svc.streamsPubsub.Load(s)
+	if !loaded {
+		return "", false
+	}
+
+	v, ok := ps.(*streamsPubsub).metadata.Load("title")
+	if !ok {
+		return "", false
+	}
+
+	return v.(string), true
+}
+
 func (svc *streamsService) streamsMap() map[StreamSub]StreamPub {
 	svc.mu.RLock()
 	defer svc.mu.RUnlock()
@@ -140,6 +180,8 @@ type streamsPubsub struct {
 	index  int64     // the currently written chunk
 	chunks [4][]byte // time-constant-ish data chunks
 	start  time.Time // when the current chunk write started
+
+	metadata sync.Map
 }
 
 func newStreamsPubsub() internal.Pubsub {
