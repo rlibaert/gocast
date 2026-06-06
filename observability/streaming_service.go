@@ -1,4 +1,4 @@
-//nolint: golines,nonamedreturns,goimports,nolintlint
+//nolint: golines,nonamedreturns,goimports,godoclint,nolintlint
 package observability
 
 import (

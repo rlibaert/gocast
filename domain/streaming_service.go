@@ -17,13 +17,14 @@ var (
 	ErrStreamNotAvailable = errors.New("domain: stream not available")
 )
 
-// StreamPub is a published stream.
-// Any [StreamPub] may be subscribed hence the [StreamPub.AsSub] method.
-type StreamPub string
-
-// StreamSub is a subscribable stream served to clients.
-// A [StreamSub] may be an alias of a [StreamPub].
-type StreamSub string
+type (
+	// StreamPub is a published stream.
+	// Any [StreamPub] may be subscribed hence the [StreamPub.AsSub] method.
+	StreamPub string
+	// StreamSub is a subscribable stream served to clients.
+	// A [StreamSub] may be an alias of a [StreamPub].
+	StreamSub string
+)
 
 // AsSub implements the subscribable nature of published streams.
 func (s StreamPub) AsSub() StreamSub { return StreamSub(s) }
@@ -156,6 +157,7 @@ func (ps *streamingPubsub) WriteTo(w io.Writer) (int64, error) {
 
 type debouncedStreamingService struct {
 	StreamingService
+
 	duration time.Duration
 }
 
