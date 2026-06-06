@@ -16,11 +16,12 @@ RUN tar -xJf ffmpeg-8.1.tar.xz && \
     make -j$(nproc) && \
     make install
 
+FROM builder AS build
 WORKDIR /workdir
 COPY . .
 RUN CGO_ENABLED=1 && \
     go build -ldflags="-s -w -linkmode=external -extldflags=-static" .
 
 FROM gcr.io/distroless/base-debian13:nonroot
-COPY --from=builder /workdir/gocast /bin
+COPY --from=build /workdir/gocast /bin
 ENTRYPOINT [ "/bin/gocast" ]
