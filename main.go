@@ -17,6 +17,7 @@ import (
 	"github.com/rlibaert/gocast/domain"
 	"github.com/rlibaert/gocast/observability"
 	protohttp "github.com/rlibaert/gocast/protos/proto-http"
+	protoicy "github.com/rlibaert/gocast/protos/proto-icy"
 	protosrt "github.com/rlibaert/gocast/protos/proto-srt"
 )
 
@@ -77,6 +78,9 @@ func main() {
 	wg.Go(func() {
 		mux := http.NewServeMux()
 		protohttp.ServiceRegisterer{
+			StreamingService: svc,
+		}.Register(mux)
+		protoicy.ServiceRegisterer{
 			StreamingService: svc,
 		}.Register(mux)
 		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {

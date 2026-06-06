@@ -1,6 +1,7 @@
 services:
   gocast:
     build: .
+    command: -log.level debug
     ports:
       - 8080:8080
 
@@ -18,6 +19,15 @@ services:
     command: |
       -hide_banner
       -re -f lavfi -i sine
-      -f adts srt://gocast:6000?streamid=pub:bar
+      -f adts icecast://gocast:8080/icy/bar
+    depends_on:
+      - gocast
+
+  baz:
+    image: jrottenberg/ffmpeg
+    command: |
+      -hide_banner
+      -re -f lavfi -i sine
+      -f adts srt://gocast:6000?streamid=pub:baz
     depends_on:
       - gocast
