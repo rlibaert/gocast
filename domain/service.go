@@ -74,8 +74,6 @@ type service struct {
 }
 
 func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
-	r = internal.ContextReader{Context: ctx, Reader: r}
-
 	svc.mu.Lock()
 	defer svc.mu.Unlock()
 
@@ -83,6 +81,7 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 		return 0, ErrStreamExists
 	}
 	svc.streamsMapping[s.AsSub()] = s
+	svc.streamsPubsub.LoadOrStore(s.AsSub(), &pubsub{Pubsub: internal.NewPubsub()})
 
 	svc.mu.Unlock()
 	defer func() {
@@ -97,6 +96,13 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 		}
 	}()
 
+	svc.hooks.PublishStart(ctx, s)
+	defer svc.hooks.PublishStop(ctx, s, time.Now())
+	return svc.publish(s, internal.ContextReader{Context: ctx, Reader: r})
+}
+
+// publish copies from r to every [StreamSub] mapped to [StreamPub].
+func (svc *service) publish(s StreamPub, r io.Reader) (int64, error) {
 	w := internal.FuncWriter(func(p []byte) (int, error) {
 		svc.mu.RLock()
 		defer svc.mu.RUnlock()
@@ -113,16 +119,10 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 		return len(p), nil
 	})
 
-	svc.streamsPubsub.LoadOrStore(s.AsSub(), &pubsub{Pubsub: internal.NewPubsub()})
-
-	svc.hooks.PublishStart(ctx, s)
-	defer svc.hooks.PublishStop(ctx, s, time.Now())
 	return io.Copy(w, r)
 }
 
 func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (int64, error) {
-	w = internal.ContextWriter{Context: ctx, Writer: w}
-
 	ps, loaded := svc.streamsPubsub.Load(s)
 	if !loaded {
 		return 0, ErrStreamNotFound
@@ -130,7 +130,7 @@ func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (in
 
 	svc.hooks.SubscribeStart(ctx, s)
 	defer svc.hooks.SubscribeStop(ctx, s, time.Now())
-	return ps.(internal.Pubsub).WriteTo(w) //nolint: errcheck // always valid
+	return ps.(internal.Pubsub).WriteTo(internal.ContextWriter{Context: ctx, Writer: w}) //nolint: errcheck // always valid
 }
 
 func (svc *service) PublishTitle(ctx context.Context, s StreamPub, title string) error {
