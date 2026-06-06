@@ -24,7 +24,6 @@ type pubsub struct {
 
 func (ps *pubsub) Flush() error {
 	_, err := ps.chunk.WriteTo(ps.Pubsub)
-	ps.chunk.Reset()
 	return err
 }
 

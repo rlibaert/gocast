@@ -27,7 +27,6 @@ func init() {
 			}
 			wn, werr := buf.WriteTo(dst)
 			n += wn
-			buf.Reset()
 			return werr
 		}))
 		return n, err
