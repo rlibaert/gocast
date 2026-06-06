@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -59,13 +60,13 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 			writer = &paginatedWriter{
 				Writer:   w,
 				pageSize: metaInt,
-				onPageEnd: func() {
+				pageFooter: func() io.WriterTo {
 					var m metadata
 					if title, ok := domain.ServiceStreamSubTitle(reg.Service, domain.StreamSub(stream)); ok {
 						m.StreamTitle = &title
 					}
 					b, _ := m.MarshalBinary()
-					_, _ = w.Write(b)
+					return bytes.NewReader(b)
 				},
 			}
 			w.Header().Set("icy-metaint", metaIntStr)
@@ -120,7 +121,7 @@ type paginatedWriter struct {
 
 	pageSize   int
 	pageLength int
-	onPageEnd  func()
+	pageFooter func() io.WriterTo
 }
 
 func (pw *paginatedWriter) Write(p []byte) (int, error) {
@@ -134,7 +135,10 @@ func (pw *paginatedWriter) Write(p []byte) (int, error) {
 			return n, err
 		}
 		if pw.pageLength == pw.pageSize {
-			pw.onPageEnd()
+			_, err := pw.pageFooter().WriteTo(pw.Writer)
+			if err != nil {
+				return n, err
+			}
 			pw.pageLength = 0
 		}
 	}
