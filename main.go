@@ -4,11 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 
 	"github.com/VictoriaMetrics/metrics"
@@ -85,7 +87,7 @@ func main() {
 		})
 		srv := &http.Server{
 			BaseContext:       func(net.Listener) context.Context { return ctx },
-			ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
+			ErrorLog:          slog.NewLogLogger(logger.With("srv", "http").Handler(), slog.LevelWarn),
 			Addr:              *httpAddr,
 			ReadHeaderTimeout: *httpReadHeaderTimeout,
 			Handler:           mux,
@@ -93,14 +95,14 @@ func main() {
 
 		eg.Go(func() error {
 			<-ctx.Done()
-			logger.Info("http server shutting down")
+			srv.ErrorLog.Print("server shutting down")
 			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Minute)
 			defer cancel2()
 			return srv.Shutdown(ctx2)
 		})
 
-		logger.Info("http server starting")
-		defer logger.Info("http server stopped")
+		srv.ErrorLog.Print("server starting")
+		defer srv.ErrorLog.Print("server stopped")
 		return srv.ListenAndServe()
 	})
 
@@ -111,7 +113,7 @@ func main() {
 		}.Register(mux)
 		srv := &http.Server{
 			BaseContext:       func(net.Listener) context.Context { return ctx },
-			ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
+			ErrorLog:          slog.NewLogLogger(logger.With("srv", "icy").Handler(), slog.LevelWarn),
 			Addr:              *icyAddr,
 			ReadHeaderTimeout: *httpReadHeaderTimeout,
 			Handler:           mux,
@@ -119,22 +121,24 @@ func main() {
 
 		eg.Go(func() error {
 			<-ctx.Done()
-			logger.Info("icy server shutting down")
+			srv.ErrorLog.Print("server shutting down")
 			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Minute)
 			defer cancel2()
 			return srv.Shutdown(ctx2)
 		})
 
-		logger.Info("icy server starting")
-		defer logger.Info("icy server stopped")
+		srv.ErrorLog.Print("server starting")
+		defer srv.ErrorLog.Print("server stopped")
 		return srv.ListenAndServe()
 	})
 
 	eg.Go(func() error {
+		srvErrorLog := slog.NewLogLogger(logger.With("srv", "srt").Handler(), slog.LevelWarn)
 		srv := &srt.Server{
 			Addr:   *srtAddr,
 			Config: new(srt.DefaultConfig()),
 		}
+		srv.Config.Logger = &srtLogger{srvErrorLog}
 		protosrt.ServiceRegisterer{
 			BaseContext:    func() context.Context { return ctx },
 			StreamsService: svc,
@@ -142,15 +146,27 @@ func main() {
 
 		eg.Go(func() error {
 			<-ctx.Done()
-			logger.Info("srt server shutting down")
+			srvErrorLog.Print("server shutting down")
 			srv.Shutdown()
 			return nil
 		})
 
-		logger.Info("srt server starting")
-		defer logger.Info("srt server stopped")
+		srvErrorLog.Print("server starting")
+		defer srvErrorLog.Print("server stopped")
 		return srv.ListenAndServe()
 	})
 
 	logger.Error("exiting", "err", eg.Wait(), "cause", context.Cause(ctx))
+}
+
+type srtLogger struct{ l *log.Logger }
+
+func (l *srtLogger) Listen() <-chan srt.Log     { panic("implementation not needed") }
+func (l *srtLogger) Close()                     { panic("implementation not needed") }
+func (l *srtLogger) HasTopic(topic string) bool { return strings.HasSuffix(topic, ":error") }
+
+func (l *srtLogger) Print(topic string, _ uint32, _ int, message func() string) {
+	if l.HasTopic(topic) {
+		l.l.Print(message())
+	}
 }
