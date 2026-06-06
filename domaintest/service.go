@@ -189,3 +189,38 @@ func (st ServiceTester) TestPublishTitle(t *testing.T) {
 	assert.EQ(t, *cmp.Or(ServiceStreamSubTitle(st.Service, "tata"), new("<nil>")), title)
 	assert.ErrIs(t, st.Service.PublishTitle(t.Context(), "bar", ""), domain.ErrStreamNotFound)
 }
+
+func (st ServiceTester) TestCloseOnFallbacksRemoved(t *testing.T) {
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
+
+	wg.Go(func() {
+		ServiceResetFallbacks(st.Service, map[StreamSub][]StreamPub{"toto": {"foo"}})
+		time.Sleep(2 * time.Second)
+		ServiceResetFallbacks(st.Service, map[StreamSub][]StreamPub{})
+	})
+
+	wgPubsPublishing := sync.WaitGroup{}
+	wgPubsPublishing.Add(1)
+	wg.Go(func() {
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+
+		n, err := st.Service.Publish(ctx, "foo", pubReader(time.Millisecond, wgPubsPublishing.Done, "foo"))
+		assert.ErrIs(t, err, context.DeadlineExceeded)
+		assert.GT(t, n, 0)
+	})
+	wgPubsPublishing.Wait()
+
+	t.Run("toto gets closed", func(t *testing.T) {
+		n, err := st.Service.Subscribe(t.Context(), "toto", io.Discard)
+		assert.ErrIs(t, err, nil)
+		assert.GT(t, n, 0)
+	})
+
+	t.Run("foo still opened", func(t *testing.T) {
+		n, err := st.Service.Subscribe(t.Context(), "foo", io.Discard)
+		assert.ErrIs(t, err, nil)
+		assert.GT(t, n, 0)
+	})
+}

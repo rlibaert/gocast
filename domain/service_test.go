@@ -39,3 +39,9 @@ func TestServiceBackup(t *testing.T) {
 	domaintest.ServiceTester{Service: NewService(defaultHooks, 0)}.
 		TestBackup(t)
 }
+
+func TestServiceCloseOnFallbacksRemoved(t *testing.T) {
+	t.Parallel()
+	domaintest.ServiceTester{Service: NewService(defaultHooks, 0)}.
+		TestCloseOnFallbacksRemoved(t)
+}

@@ -104,12 +104,10 @@ rewiring:
 			}
 		}
 
-		panic(map[string]any{
-			"msg":       "unable to rewire " + sub,
-			"rewire":    rewire,
-			"wirings":   svc.wirings,
-			"fallbacks": svc.fallbacks,
-		})
+		svc.streamsTitle.Delete(sub)
+		if v, ok := svc.streamsPubsub.LoadAndDelete(sub); ok {
+			v.(*pubsub).Close()
+		}
 	}
 
 wiring:
