@@ -26,11 +26,11 @@ import (
 func main() {
 	var (
 		logLevel              = slog.LevelInfo
+		svcDebounce           = flag.Duration("service.debounce", 15*time.Second, "Ingested stream healthy time")
+		httpReadHeaderTimeout = flag.Duration("http.read-header-timeout", 15*time.Second, "Time to read HTTP request headers")
 		httpAddr              = flag.String("http.addr", ":8080", "HTTP server binding `host:port`")
-		httpReadHeaderTimeout = flag.Duration("http.read-header-timeout", 15*time.Second, "")
 		icyAddr               = flag.String("icy.addr", ":8000", "Icecast-like server binding `host:port`")
 		srtAddr               = flag.String("srt.addr", ":6000", "SRT server binding `host:port`")
-		svcDebounce           = flag.Duration("service.debounce", 15*time.Second, "ingested stream healthy time")
 	)
 	flag.TextVar(&logLevel, "log.level", logLevel, "logging `level`")
 	flag.Parse()
