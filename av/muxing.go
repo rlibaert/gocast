@@ -16,10 +16,12 @@ import (
 type Packet C.AVPacket
 
 type (
-	Demuxer interface{ Demux(*Packet) error }
-	Muxer   interface{ Mux(*Packet) error }
+	Demuxer interface{ Demux(*Packet) error } // Demuxer reads [Packet]s and returns an error if none are available.
+	Muxer   interface{ Mux(*Packet) error }   // Muxer writes [Packet]s to the underlying packet stream.
 )
 
+// RemuxPacket is identical to [Remux] except that it stages through the provided
+// [Packet] rather than allocating a temporary one ([io.CopyBuffer] style).
 func RemuxPacket(m Muxer, d Demuxer, p *Packet) (int64, error) {
 	for count := int64(0); ; count++ {
 		err := d.Demux(p)
@@ -35,6 +37,7 @@ func RemuxPacket(m Muxer, d Demuxer, p *Packet) (int64, error) {
 	}
 }
 
+// Remux muxes to [Muxer] packets demuxed from [Demuxer] ([io.Copy] style).
 func Remux(m Muxer, d Demuxer) (int64, error) {
 	p := C.av_packet_alloc()
 	if p == nil {
@@ -51,8 +54,10 @@ func (discard) Mux(p *Packet) error {
 	return nil
 }
 
+// Discard is a [Muxer] on which all Mux calls simply discards the [Packet].
 var Discard Muxer = discard{} //nolint: gochecknoglobals // as per [io.Discard]
 
+// demuxer implements [Demuxer].
 type demuxer struct {
 	reader *cgo.Handle
 	io     *C.AVIOContext
@@ -76,12 +81,7 @@ func cgoReaderRead(opaque unsafe.Pointer, buf *C.uint8_t, bufsize C.int) C.int {
 	}
 }
 
-type DemuxCloser interface {
-	Demuxer
-	Close() error
-}
-
-func NewDemuxer(r io.Reader) (DemuxCloser, error) {
+func newDemuxer(r io.Reader) (*demuxer, error) {
 	reader := cgo.NewHandle(r)
 	readPacketArg, readPacket := unsafe.Pointer(&reader), (*[0]byte)(C.cgoReaderRead)
 	io := C.avio_alloc_context(nil, 0, 0, readPacketArg, readPacket, nil, nil)
@@ -133,4 +133,14 @@ func (d *demuxer) Close() error {
 	C.avio_context_free(&d.io)
 	d.reader.Delete()
 	return nil
+}
+
+type DemuxCloser interface {
+	Demuxer
+	Close() error
+}
+
+// NewDemuxer returns a [Demuxer] that demuxes packets by reading the [io.Reader].
+func NewDemuxer(r io.Reader) (DemuxCloser, error) {
+	return newDemuxer(r)
 }
