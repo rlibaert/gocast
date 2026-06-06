@@ -118,23 +118,23 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 		return 0, ErrPubsubClosed
 	}
 
+	ps.subsWg.Add(1)
+	defer ps.subsWg.Done()
+
 	const refbufQueueSize = 8
 	ch := make(chan *refbuf, refbufQueueSize)
 	ps.replay(ch)
 	ps.subs = append(ps.subs, ch)
-	ps.subsWg.Add(1)
-
-	ps.mu.Unlock()
 	defer func() {
-		ps.mu.Lock()
-
+		// fast unordered delete
 		if i := slices.Index(ps.subs, ch); i != -1 {
-			close(ch)
 			ps.subs[i], ps.subs[len(ps.subs)-1] = ps.subs[len(ps.subs)-1], nil
 			ps.subs = ps.subs[:len(ps.subs)-1]
 		}
-		ps.subsWg.Done()
 	}()
+
+	ps.mu.Unlock()
+	defer ps.mu.Lock()
 
 	n := int64(0)
 	for rb := range ch {
