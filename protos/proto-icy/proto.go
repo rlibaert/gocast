@@ -126,21 +126,23 @@ type paginatedWriter struct {
 
 func (pw *paginatedWriter) Write(p []byte) (int, error) {
 	n := 0
-	for len(p) > 0 {
-		wn, err := pw.Writer.Write(p[:min(len(p), pw.pageSize-pw.pageLength)])
+
+	for len(p) >= pw.pageSize-pw.pageLength {
+		wn, err := pw.Writer.Write(p[:pw.pageSize-pw.pageLength])
 		n += wn
-		pw.pageLength += wn
 		p = p[wn:]
 		if err != nil {
 			return n, err
 		}
-		if pw.pageLength == pw.pageSize {
-			_, err := pw.pageFooter().WriteTo(pw.Writer)
-			if err != nil {
-				return n, err
-			}
-			pw.pageLength = 0
+
+		_, err = pw.pageFooter().WriteTo(pw.Writer)
+		if err != nil {
+			return n, err
 		}
+		pw.pageLength = 0
 	}
-	return n, nil
+
+	wn, err := pw.Writer.Write(p)
+	pw.pageLength += wn
+	return n + wn, err
 }
