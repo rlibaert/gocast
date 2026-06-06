@@ -16,6 +16,12 @@ type Pubsub interface {
 
 var ErrPubsubClosed = errors.New("domain: pubsub closed")
 
+// refbuf is a shared buffer with a reference counter.
+type refbuf struct {
+	b []byte
+	n uint64
+}
+
 // pubsub implements [Pubsub].
 type pubsub struct {
 	mu     sync.Mutex
@@ -26,24 +32,28 @@ type pubsub struct {
 	refbufs sync.Pool
 }
 
-// refbuf is a shared buffer with a reference counter.
-type refbuf struct {
-	b []byte
-	n uint64
-}
-
-// unref atomically decrements the reference counter
-// and returns the number of remaining references.
-func (rb *refbuf) unref() uint64 {
-	return atomic.AddUint64(&rb.n, ^uint64(0))
-}
-
 func NewPubsub() Pubsub {
 	return new(pubsub{
 		refbufs: sync.Pool{
 			New: func() any { return new(refbuf) },
 		},
 	})
+}
+
+// refbuf returns a pooled [*refbuf] with the given bytes and reference count.
+func (ps *pubsub) refbuf(p []byte, n uint64) *refbuf {
+	rb := ps.refbufs.Get().(*refbuf) //nolint: errcheck // always a non-nil [*refbuf]
+	rb.b = append(rb.b[:0], p...)
+	rb.n = n
+	return rb
+}
+
+// unref atomically decrements the [*refbuf] reference counter
+// and puts it back into the pool when the count reaches zero.
+func (ps *pubsub) unref(rb *refbuf) {
+	if atomic.AddUint64(&rb.n, ^uint64(0)) == 0 {
+		ps.refbufs.Put(rb)
+	}
 }
 
 func (ps *pubsub) Write(p []byte) (int, error) {
@@ -55,13 +65,12 @@ func (ps *pubsub) Write(p []byte) (int, error) {
 	}
 
 	if len(ps.subs) != 0 {
-		rb := ps.refbufs.Get().(*refbuf) //nolint: errcheck // always a non-nil [*refbuf]
-		rb.b = append(rb.b[:0], p...)
-		rb.n = uint64(len(ps.subs))
+		rb := ps.refbuf(p, uint64(len(ps.subs)))
 		for _, ch := range ps.subs {
 			select {
 			case ch <- rb:
 			default:
+				ps.unref(rb)
 			}
 		}
 	}
@@ -116,9 +125,7 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 	n := int64(0)
 	for rb := range ch {
 		wn, werr := w.Write(rb.b)
-		if rb.unref() == 0 {
-			ps.refbufs.Put(rb)
-		}
+		ps.unref(rb)
 		n += int64(wn)
 		if werr != nil {
 			return n, werr
