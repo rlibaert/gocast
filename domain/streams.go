@@ -167,6 +167,12 @@ func (ps *streamsPubsub) Write(p []byte) (int, error) {
 	return len(p), err
 }
 
+// Close flushes buffered data and closes the underlying [internal.Pubsub].
+func (ps *streamsPubsub) Close() error {
+	_, err := ps.Pubsub.Write(ps.chunks[ps.index])
+	return errors.Join(ps.Pubsub.Close(), err)
+}
+
 // WriteTo starts by writing the buffered data chunks, excepted the current
 // and the next to be (for clearance, meaning that we need at least 3 chunks).
 func (ps *streamsPubsub) WriteTo(w io.Writer) (int64, error) {
