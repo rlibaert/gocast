@@ -27,7 +27,7 @@ func (m *metaint) UnmarshalText(text []byte) error {
 // and returns the new buffer.
 //
 // The encoding consists in:
-//   - a heading byte containing the number of data blocks to come
+//   - a heading byte containing the amount of data blocks to come
 //   - the actual metadata string
 //   - a NUL byte terminating the string
 //   - padding bytes filling the last block
@@ -38,7 +38,8 @@ func (m *metaint) UnmarshalText(text []byte) error {
 //
 // Usage example:
 //
-//	_ = Metadata(nil, "StreamTitle='", title, "';")
+//	b := Metadata(nil)
+//	b = Metadata(b, "StreamTitle='", title, "';")
 func Metadata(buf []byte, elems ...string) []byte {
 	buf = append(buf[:0], 0)
 	if len(elems) == 0 {
@@ -50,10 +51,10 @@ func Metadata(buf []byte, elems ...string) []byte {
 	}
 
 	type block [16]byte
-	const blocksLimit = ^byte(0)
+	const blocksLimit = ^byte(0) // max value for a byte
 
-	remain := len(buf[1:]) % len(block{})
-	buf = append(buf, new(block)[remain:]...) // adds at least 1 NUL byte
+	// NUL-terminate and pad to the next block boundary
+	buf = append(buf, new(block)[len(buf[1:])%len(block{}):]...) // adds at least 1 NUL byte
 
 	blocks := len(buf[1:]) / len(block{})
 	if blocks > int(blocksLimit) {
