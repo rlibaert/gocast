@@ -6,7 +6,6 @@ import (
 	"io"
 	"maps"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/rlibaert/gocast/domain/internal"
@@ -71,6 +70,7 @@ type service struct {
 	mu             sync.RWMutex
 	streamsMapping map[StreamSub]StreamPub
 	streamsPubsub  sync.Map
+	streamsTitle   sync.Map
 }
 
 func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
@@ -107,13 +107,13 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 			}
 
 			ps, _ := svc.streamsPubsub.Load(sub)
-			ps.(*pubsub).Write(p) //nolint: errcheck,gosec // always valid and never fails
+			ps.(internal.Pubsub).Write(p) //nolint: errcheck,gosec // always valid and never fails
 		}
 
 		return len(p), nil
 	})
 
-	svc.streamsPubsub.LoadOrStore(s.AsSub(), newPubsub())
+	svc.streamsPubsub.LoadOrStore(s.AsSub(), &pubsub{Pubsub: internal.NewPubsub()})
 
 	svc.hooks.PublishStart(ctx, s)
 	defer svc.hooks.PublishStop(ctx, s, time.Now())
@@ -130,7 +130,7 @@ func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (in
 
 	svc.hooks.SubscribeStart(ctx, s)
 	defer svc.hooks.SubscribeStop(ctx, s, time.Now())
-	return ps.(*pubsub).WriteTo(w) //nolint: errcheck // always valid
+	return ps.(internal.Pubsub).WriteTo(w) //nolint: errcheck // always valid
 }
 
 func (svc *service) PublishTitle(ctx context.Context, s StreamPub, title string) error {
@@ -144,22 +144,14 @@ func (svc *service) PublishTitle(ctx context.Context, s StreamPub, title string)
 		}
 		err = nil
 
-		ps, _ := svc.streamsPubsub.Load(sub)
-		if ps != nil {
-			ps.(*pubsub).metadata.Store("title", title)
-		}
+		svc.streamsTitle.Store(sub, title)
 	}
 
 	return err
 }
 
 func (svc *service) streamSubTitle(s StreamSub) (string, bool) {
-	ps, loaded := svc.streamsPubsub.Load(s)
-	if !loaded {
-		return "", false
-	}
-
-	v, ok := ps.(*pubsub).metadata.Load("title")
+	v, ok := svc.streamsTitle.Load(s)
 	if !ok {
 		return "", false
 	}
@@ -171,59 +163,6 @@ func (svc *service) streamsMap() map[StreamSub]StreamPub {
 	svc.mu.RLock()
 	defer svc.mu.RUnlock()
 	return maps.Clone(svc.streamsMapping)
-}
-
-// pubsub wraps an [internal.Pubsub] to buffer writes and burst data when a new subscriber connects.
-type pubsub struct {
-	internal.Pubsub
-
-	index  int64     // the currently written chunk
-	chunks [4][]byte // time-constant-ish data chunks
-	start  time.Time // when the current chunk write started
-
-	metadata sync.Map
-}
-
-func newPubsub() *pubsub { return &pubsub{Pubsub: internal.NewPubsub()} }
-
-// Write buffers the data in ringed chunks of roughly equal durations.
-func (ps *pubsub) Write(p []byte) (int, error) {
-	ps.chunks[ps.index] = append(ps.chunks[ps.index], p...)
-	if time.Since(ps.start) < 2*time.Second {
-		return len(p), nil
-	}
-
-	_, err := ps.Pubsub.Write(ps.chunks[ps.index])
-
-	atomic.StoreInt64(&ps.index, (ps.index+1)%int64(len(ps.chunks)))
-	ps.chunks[ps.index] = ps.chunks[ps.index][:0]
-	ps.start = time.Now()
-
-	return len(p), err
-}
-
-// Close flushes buffered data and closes the underlying [internal.Pubsub].
-func (ps *pubsub) Close() error {
-	_, err := ps.Pubsub.Write(ps.chunks[ps.index])
-	return errors.Join(ps.Pubsub.Close(), err)
-}
-
-// WriteTo starts by writing the buffered data chunks, excepted the current
-// and the next to be (for clearance, meaning that we need at least 3 chunks).
-func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
-	var n int64
-
-	index := atomic.LoadInt64(&ps.index)
-	for _, buf := range append(ps.chunks[index:], ps.chunks[:index]...)[2:] {
-		wn, err := w.Write(buf)
-		n += int64(wn)
-		if err != nil {
-			return n, err
-		}
-	}
-
-	m, err := ps.Pubsub.WriteTo(w)
-	return n + m, err
 }
 
 type serviceDebounced struct {
