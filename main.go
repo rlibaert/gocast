@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/VictoriaMetrics/metrics"
@@ -41,7 +42,7 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	svcHooks := domain.ServiceHooks{
