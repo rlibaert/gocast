@@ -192,8 +192,12 @@ func (svc *service) publish(s StreamPub, r io.Reader) (int64, error) {
 		return len(p), nil
 	})
 
-	return io.Copy(w, r)
+	return StreamCopy(w, r)
 }
+
+// StreamCopy is the function used to copy stream data.
+// It can be customized to control how data is copied.
+var StreamCopy = io.Copy
 
 func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (int64, error) {
 	ps, loaded := svc.streamsPubsub.Load(s)
