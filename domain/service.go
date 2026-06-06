@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -68,7 +69,9 @@ func NewService(
 		wirings:   map[StreamPub][]StreamSub{},
 		fallbacks: map[StreamSub][]StreamPub{},
 	}
-	svc = serviceDebounced{svc, debounce}
+	if debounce > 0 {
+		svc = serviceDebounced{svc, debounce}
+	}
 	return svc
 }
 
@@ -252,17 +255,19 @@ func (svc serviceDebounced) Publish(ctx context.Context, s StreamPub, r io.Reade
 	type stopError struct{ error }
 
 	t := time.Now().Add(svc.duration)
+	b := bytes.NewBuffer(nil)
 	w := internal.FuncWriter(func(p []byte) (int, error) {
 		if time.Now().After(t) {
 			return 0, stopError{}
 		}
-		return len(p), nil
+		return b.Write(p)
 	})
 
 	n, err := io.Copy(w, r)
 	if err != error(stopError{}) { //nolint: errorlint // function-scoped error type returned right above
 		return n, err
 	}
+	b, r = nil, io.MultiReader(b, r)
 
 	m, err := svc.Service.Publish(ctx, s, r)
 	return n + m, err
