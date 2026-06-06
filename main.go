@@ -40,7 +40,23 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	svc := domain.NewStreamingService(*svcDebounce)
+	svc := domain.NewStreamingService(
+		domain.StreamingServiceHooks{
+			StreamPubStart: func(ctx context.Context, s domain.StreamPub) {
+				logger.InfoContext(ctx, "StreamingServiceHooks.StreamPubStart", "stream", s)
+			},
+			StreamPubStop: func(ctx context.Context, s domain.StreamPub, start time.Time) {
+				logger.InfoContext(ctx, "StreamingServiceHooks.StreamPubStop", "stream", s, "dur", time.Since(start))
+			},
+			StreamSubStart: func(ctx context.Context, s domain.StreamSub) {
+				logger.InfoContext(ctx, "StreamingServiceHooks.StreamSubStart", "stream", s)
+			},
+			StreamSubStop: func(ctx context.Context, s domain.StreamSub, start time.Time) {
+				logger.InfoContext(ctx, "StreamingServiceHooks.StreamSubStop", "stream", s, "dur", time.Since(start))
+			},
+		},
+		*svcDebounce,
+	)
 	svc, metricsWriter := observability.ObservableStreamingService(svc, logger)
 
 	wg := sync.WaitGroup{}

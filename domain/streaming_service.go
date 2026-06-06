@@ -34,8 +34,19 @@ type StreamingService interface {
 	Subscribe(context.Context, StreamSub, io.Writer) (int64, error)
 }
 
-func NewStreamingService(debounce time.Duration) StreamingService {
+type StreamingServiceHooks struct {
+	StreamPubStart func(ctx context.Context, s StreamPub)
+	StreamPubStop  func(ctx context.Context, s StreamPub, start time.Time)
+	StreamSubStart func(ctx context.Context, s StreamSub)
+	StreamSubStop  func(ctx context.Context, s StreamSub, start time.Time)
+}
+
+func NewStreamingService(
+	hooks StreamingServiceHooks,
+	debounce time.Duration,
+) StreamingService {
 	var svc StreamingService = &streamingService{
+		hooks:          hooks,
 		streamsMapping: map[StreamSub]StreamPub{},
 	}
 	svc = debouncedStreamingService{svc, debounce}
@@ -43,6 +54,8 @@ func NewStreamingService(debounce time.Duration) StreamingService {
 }
 
 type streamingService struct {
+	hooks StreamingServiceHooks
+
 	mu             sync.RWMutex
 	streamsMapping map[StreamSub]StreamPub
 	streamsPubsub  sync.Map
@@ -92,6 +105,8 @@ func (svc *streamingService) Publish(ctx context.Context, s StreamPub, r io.Read
 		return len(p), nil
 	})
 
+	svc.hooks.StreamPubStart(ctx, s)
+	defer svc.hooks.StreamPubStop(ctx, s, time.Now())
 	return io.Copy(w, r)
 }
 
@@ -104,6 +119,8 @@ func (svc *streamingService) Subscribe(ctx context.Context, s StreamSub, w io.Wr
 	case ps == nil:
 		return 0, ErrStreamNotAvailable
 	default:
+		svc.hooks.StreamSubStart(ctx, s)
+		defer svc.hooks.StreamSubStop(ctx, s, time.Now())
 		return ps.(internal.Pubsub).WriteTo(w) //nolint: errcheck // always valid
 	}
 }
