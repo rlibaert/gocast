@@ -1,9 +1,6 @@
 package proto
 
-import (
-	"fmt"
-	"strconv"
-)
+import "strconv"
 
 var (
 	// metaInt is the number of stream bytes written before sending in-band metadata.
@@ -23,10 +20,14 @@ func (m metadata) MarshalBinary() (buf []byte, _ error) {
 	buf = []byte{0}
 
 	if m.StreamTitle != nil {
-		buf = fmt.Appendf(buf, "StreamTitle='%s';", *m.StreamTitle)
+		buf = append(buf, "StreamTitle='"...)
+		buf = append(buf, *m.StreamTitle...)
+		buf = append(buf, "';"...)
 	}
 	if m.StreamURL != nil {
-		buf = fmt.Appendf(buf, "StreamUrl='%s';", *m.StreamURL)
+		buf = append(buf, "StreamUrl='"...)
+		buf = append(buf, *m.StreamURL...)
+		buf = append(buf, "';"...)
 	}
 
 	if len(buf) == 1 {
