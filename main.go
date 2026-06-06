@@ -41,7 +41,7 @@ func main() {
 	defer cancel()
 
 	svc := domain.NewStreamingService(*svcDebounce)
-	svc = observability.ObservableStreamingService(svc, logger)
+	svc, metricsWriter := observability.ObservableStreamingService(svc, logger)
 
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
@@ -51,6 +51,9 @@ func main() {
 		protohttp.ServiceRegisterer{
 			StreamingService: svc,
 		}.Register(mux)
+		mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
+			metricsWriter(w, "gocast_")
+		})
 		srv := &http.Server{
 			BaseContext:       func(net.Listener) context.Context { return ctx },
 			ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
