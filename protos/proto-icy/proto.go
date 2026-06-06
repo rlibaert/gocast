@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -56,20 +55,19 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		stream := r.PathValue("stream")
 
 		var writer io.Writer = w
-		if r.Header.Get("icy-metadata") == "1" {
+		if r.Header.Get("Icy-Metadata") == "1" {
+			mbytes := metadata(nil)
 			writer = &paginatedWriter{
 				Writer:   w,
 				pageSize: metaInt,
-				pageFooter: func() io.WriterTo {
-					var m metadata
+				pageFooter: func() []byte {
 					if title, ok := domain.ServiceStreamSubTitle(reg.Service, domain.StreamSub(stream)); ok {
-						m.StreamTitle = &title
+						mbytes = metadata(mbytes, "StreamTitle='", title, "';")
 					}
-					b, _ := m.MarshalBinary()
-					return bytes.NewReader(b)
+					return mbytes
 				},
 			}
-			w.Header().Set("icy-metaint", metaIntStr)
+			w.Header().Set("Icy-Metaint", metaIntStr)
 		}
 
 		w.Header().Set("Content-Type", "audio/mpeg")
@@ -121,7 +119,7 @@ type paginatedWriter struct {
 
 	pageSize   int
 	pageLength int
-	pageFooter func() io.WriterTo
+	pageFooter func() []byte
 }
 
 func (pw *paginatedWriter) Write(p []byte) (int, error) {
@@ -135,7 +133,7 @@ func (pw *paginatedWriter) Write(p []byte) (int, error) {
 			return n, err
 		}
 
-		_, err = pw.pageFooter().WriteTo(pw.Writer)
+		_, err = pw.Writer.Write(pw.pageFooter())
 		if err != nil {
 			return n, err
 		}

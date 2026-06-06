@@ -11,37 +11,47 @@ var (
 
 func SetMetaInt(v int) { metaInt, metaIntStr = v, strconv.Itoa(v) }
 
-type metadata struct {
-	StreamTitle *string
-	StreamURL   *string
-}
-
-func (m metadata) MarshalBinary() (buf []byte, _ error) {
-	buf = []byte{0}
-
-	if m.StreamTitle != nil {
-		buf = append(buf, "StreamTitle='"...)
-		buf = append(buf, *m.StreamTitle...)
-		buf = append(buf, "';"...)
+// metadata takes ownership of the buffer to encode Icecast in-band metadata
+// and returns the new buffer.
+//
+// The encoding consists in:
+//   - a heading byte containing the number of data blocks to come
+//   - the actual metadata string
+//   - a NUL byte terminating the string
+//   - padding bytes filling the last block
+//
+// The metadata string is formatted as a series of **key='value';** pairs,
+// provided in the elems argument. It is the caller's responsibility to ensure
+// proper formatting and a length within limits.
+//
+// Usage example:
+//
+//	_ = metadata(nil, "StreamTitle='", title, "';")
+func metadata(buf []byte, elems ...string) []byte {
+	buf = append(buf[:0], 0)
+	if len(elems) == 0 {
+		return buf
 	}
-	if m.StreamURL != nil {
-		buf = append(buf, "StreamUrl='"...)
-		buf = append(buf, *m.StreamURL...)
-		buf = append(buf, "';"...)
+
+	for _, elem := range elems {
+		buf = append(buf, elem...)
+	}
+	buf = append(buf, '0') // NUL-terminate the string
+
+	type block [16]byte
+	blocks := len(buf[1:]) / len(block{})
+	remain := len(buf[1:]) % len(block{})
+	if remain != 0 {
+		var padding block
+		buf = append(buf, padding[remain:]...)
+		blocks++
 	}
 
-	if len(buf) == 1 {
-		return buf, nil
+	const blocksLimit = ^byte(0)
+	if blocks > int(blocksLimit) {
+		return metadata(buf) // TODO: log
 	}
+	buf[0] = byte(blocks)
 
-	// Always NUL-terminate to ensure compatibility with C strings
-	buf = append(buf, '0')
-
-	const blockSize = 16
-	if lastBlockLength := len(buf[1:]) % blockSize; lastBlockLength > 0 {
-		buf = append(buf, make([]byte, blockSize-lastBlockLength)...)
-	}
-	buf[0] = byte(len(buf[1:]) / blockSize)
-
-	return buf, nil
+	return buf
 }
