@@ -1,6 +1,7 @@
 package domaintest
 
 import (
+	"cmp"
 	"context"
 	"io"
 	"regexp"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rlibaert/gocast/domain"
 	. "github.com/rlibaert/gocast/domain"
 	"github.com/rlibaert/gocast/testing/assert"
 )
@@ -157,4 +159,33 @@ func (st ServiceTester) TestBackup(t *testing.T) {
 		assert.GT(t, n, 0)
 		assert.EQ(t, re, re2)
 	})
+}
+
+func (st ServiceTester) TestPublishTitle(t *testing.T) {
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
+
+	wgPubsPublishing := sync.WaitGroup{}
+	wgPubsPublishing.Add(1)
+	wg.Go(func() {
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+
+		n, err := st.Service.Publish(ctx, "foo", pubReader(time.Millisecond, wgPubsPublishing.Done, "foo"))
+		assert.ErrIs(t, err, context.DeadlineExceeded)
+		assert.GT(t, n, 0)
+	})
+	wgPubsPublishing.Wait()
+
+	ServiceResetFallbacks(st.Service, map[StreamSub][]StreamPub{
+		"toto": {"foo"},
+		"tata": {"foo"},
+	})
+
+	const title = "lorem ipsum"
+	assert.ErrNil(t, st.Service.PublishTitle(t.Context(), "foo", title))
+	assert.EQ(t, *cmp.Or(ServiceStreamSubTitle(st.Service, "foo"), new("<nil>")), title)
+	assert.EQ(t, *cmp.Or(ServiceStreamSubTitle(st.Service, "toto"), new("<nil>")), title)
+	assert.EQ(t, *cmp.Or(ServiceStreamSubTitle(st.Service, "tata"), new("<nil>")), title)
+	assert.ErrIs(t, st.Service.PublishTitle(t.Context(), "bar", ""), domain.ErrStreamNotFound)
 }
