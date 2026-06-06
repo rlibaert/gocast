@@ -72,7 +72,7 @@ func BenchmarkPubsub_Write10k(b *testing.B) {
 	for range 10_000 {
 		go func() {
 			_, err := ps.WriteTo(io.Discard)
-			require.NoError(b, err)
+			assert.NoError(b, err)
 		}()
 	}
 	go func() {
