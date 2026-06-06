@@ -20,6 +20,20 @@ func httpStatusTextError(w http.ResponseWriter, code int) {
 }
 
 func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
+	mux.HandleFunc("SOURCE /{stream}", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+
+		conn, buf, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			httpStatusTextError(w, http.StatusInternalServerError)
+			return
+		}
+		defer conn.Close()
+
+		stream := r.PathValue("stream")
+		_, _ = reg.StreamsService.Publish(r.Context(), domain.StreamPub(stream), buf)
+	})
+
 	mux.HandleFunc("PUT /{stream}", func(w http.ResponseWriter, r *http.Request) {
 		if http.CanonicalHeaderKey(r.Header.Get("Expect")) == "100-Continue" {
 			w.WriteHeader(http.StatusContinue)
