@@ -249,6 +249,7 @@ func (svc *service) streamsMap() map[StreamSub]StreamPub {
 	return m
 }
 
+// serviceDebounced delays [Service.Publish] to avoid short-lived streams.
 type serviceDebounced struct {
 	Service
 
@@ -256,23 +257,23 @@ type serviceDebounced struct {
 }
 
 func (svc serviceDebounced) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
-	type stopError struct{ error }
+	n, err, r, ok := svc.debounce(ctx, r)
+	if ok {
+		return svc.Service.Publish(ctx, s, r)
+	}
+	return n, err
+}
 
-	t := time.Now().Add(svc.duration)
-	w := internal.FuncWriter(func(p []byte) (int, error) {
-		if time.Now().After(t) {
-			return 0, stopError{}
-		}
-		return io.Discard.Write(p)
-	})
+// debounce reads the first bytes from the reader until the timeout is reached.
+// It returns the number of bytes read & the reading error, a replacement for the altered reader and a success flag.
+func (svc serviceDebounced) debounce(parent context.Context, r io.Reader) (int64, error, io.Reader, bool) { //nolint:revive // error is not an actual error
+	var errStop error = struct{ error }{}
+
+	ctx, cancel := context.WithTimeoutCause(parent, svc.duration, errStop)
+	defer cancel()
 
 	b := bytes.NewBuffer(nil)
-	n, err := io.Copy(w, io.TeeReader(r, b))
-	if err != error(stopError{}) { //nolint: errorlint // function-scoped error type returned right above
-		return n, err
-	}
-	b, r = nil, io.MultiReader(b, r) // permit GC & merge buffer back into reader
+	n, err := b.ReadFrom(internal.ContextReader{Context: ctx, Reader: r})
 
-	m, err := svc.Service.Publish(ctx, s, r)
-	return n + m, err
+	return n, err, io.MultiReader(b, r), context.Cause(ctx) == errStop
 }
