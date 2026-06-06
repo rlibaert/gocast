@@ -98,9 +98,12 @@ rewiring:
 		for _, pub := range svc.fallbacks[sub] {
 			if _, avail := svc.wirings[pub]; avail {
 				svc.wirings[pub] = append(svc.wirings[pub], sub)
+				title, _ := svc.streamsTitle.Load(pub.AsSub())
+				svc.streamsTitle.Store(sub, title)
 				continue rewiring
 			}
 		}
+
 		panic(map[string]any{
 			"msg":       "unable to rewire " + sub,
 			"rewire":    rewire,
@@ -114,13 +117,18 @@ wiring:
 		if slices.Contains(rewire, sub) {
 			continue
 		}
+
 		for _, pub := range svc.fallbacks[sub] {
 			if _, avail := svc.wirings[pub]; avail {
 				svc.wirings[pub] = append(svc.wirings[pub], sub)
+				title, _ := svc.streamsTitle.Load(pub.AsSub())
+				svc.streamsTitle.Store(sub, title)
 				svc.streamsPubsub.LoadOrStore(sub, &pubsub{Pubsub: internal.NewPubsub()})
 				continue wiring
 			}
 		}
+
+		svc.streamsTitle.Delete(sub)
 		if v, ok := svc.streamsPubsub.LoadAndDelete(sub); ok {
 			v.(*pubsub).Close()
 		}
@@ -143,23 +151,24 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 	svc.mu.Lock()
 	defer svc.mu.Unlock()
 
-	if _, ok := svc.wirings[s]; ok {
+	if _, exists := svc.wirings[s]; exists {
 		return 0, ErrStreamExists
 	}
-
-	svc.wirings[s] = nil
-	svc.rewire(maps.Keys(svc.fallbacks))
-	defer func() {
-		subs := svc.wirings[s]
-		delete(svc.wirings, s)
-		svc.rewire(slices.Values(subs))
-	}()
 
 	pubsub := &pubsub{Pubsub: internal.NewPubsub()}
 	defer pubsub.Close()
 
+	svc.streamsTitle.Store(s.AsSub(), "")
 	svc.streamsPubsub.Store(s.AsSub(), pubsub)
-	defer svc.streamsPubsub.Delete(s.AsSub())
+	svc.wirings[s] = nil
+	svc.rewire(maps.Keys(svc.fallbacks))
+	defer func() {
+		svc.streamsTitle.Delete(s.AsSub())
+		svc.streamsPubsub.Delete(s.AsSub())
+		subs := svc.wirings[s]
+		delete(svc.wirings, s)
+		svc.rewire(slices.Values(subs))
+	}()
 
 	svc.mu.Unlock()
 	defer svc.mu.Lock()
@@ -201,13 +210,17 @@ func (svc *service) PublishTitle(ctx context.Context, s StreamPub, title string)
 	svc.mu.RLock()
 	defer svc.mu.RUnlock()
 
-	err := ErrStreamNotFound
-	for _, sub := range append(svc.wirings[s], s.AsSub()) {
-		err = nil
+	subs, exists := svc.wirings[s]
+	if !exists {
+		return ErrStreamNotFound
+	}
+
+	svc.streamsTitle.Store(s.AsSub(), title)
+	for _, sub := range subs {
 		svc.streamsTitle.Store(sub, title)
 	}
 
-	return err
+	return nil
 }
 
 func (svc *service) streamSubTitle(s StreamSub) (string, bool) {
