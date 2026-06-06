@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"time"
 
 	"github.com/VictoriaMetrics/metrics"
@@ -19,6 +18,7 @@ import (
 	protohttp "github.com/rlibaert/gocast/protos/proto-http"
 	protoicy "github.com/rlibaert/gocast/protos/proto-icy"
 	protosrt "github.com/rlibaert/gocast/protos/proto-srt"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {
@@ -36,9 +36,6 @@ func main() {
 		Level: logLevel,
 	}))
 	slog.SetDefault(logger)
-
-	logger.Info("program starting")
-	defer logger.Info("program exiting")
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
@@ -72,10 +69,9 @@ func main() {
 	)
 	svc, metricsWriter := observability.ObservableStreamingService(svc, logger)
 
-	wg := sync.WaitGroup{}
-	defer wg.Wait()
+	eg, ctx := errgroup.WithContext(ctx)
 
-	wg.Go(func() {
+	eg.Go(func() error {
 		mux := http.NewServeMux()
 		protohttp.ServiceRegisterer{
 			StreamingService: svc,
@@ -98,17 +94,20 @@ func main() {
 			Handler:           mux,
 		}
 
-		wg.Go(func() {
+		eg.Go(func() error {
 			<-ctx.Done()
+			logger.Info("http server shutting down")
 			ctx2, cancel2 := context.WithTimeout(context.Background(), time.Minute)
 			defer cancel2()
-			logger.Info("server shutdown", "proto", "http", "err", srv.Shutdown(ctx2))
+			return srv.Shutdown(ctx2)
 		})
 
-		logger.Info("server returned", "proto", "http", "err", srv.ListenAndServe())
+		logger.Info("http server starting")
+		defer logger.Info("http server stopped")
+		return srv.ListenAndServe()
 	})
 
-	wg.Go(func() {
+	eg.Go(func() error {
 		srv := &srt.Server{
 			Addr:   *srtAddr,
 			Config: new(srt.DefaultConfig()),
@@ -118,12 +117,17 @@ func main() {
 			StreamingService: svc,
 		}.Register(srv)
 
-		wg.Go(func() {
+		eg.Go(func() error {
 			<-ctx.Done()
+			logger.Info("srt server shutting down")
 			srv.Shutdown()
-			logger.Info("server shutdown", "proto", "srt")
+			return nil
 		})
 
-		logger.Info("server returned", "proto", "srt", "err", srv.ListenAndServe())
+		logger.Info("srt server starting")
+		defer logger.Info("srt server stopped")
+		return srv.ListenAndServe()
 	})
+
+	logger.Error("exiting", "err", eg.Wait(), "cause", context.Cause(ctx))
 }
