@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"sync"
@@ -15,32 +16,30 @@ import (
 type pubsub struct {
 	internal.Pubsub
 
-	chunk []byte
+	chunk bytes.Buffer
 	start time.Time
 
 	readers sync.WaitGroup
 }
 
-func (ps *pubsub) flush() error {
-	_, err := ps.Pubsub.Write(ps.chunk)
-	ps.chunk, ps.start = ps.chunk[:0], time.Now()
+func (ps *pubsub) Flush() error {
+	_, err := ps.chunk.WriteTo(ps.Pubsub)
+	ps.chunk.Reset()
 	return err
 }
 
 func (ps *pubsub) Write(p []byte) (int, error) {
-	ps.chunk = append(ps.chunk, p...)
-
-	var err error
+	n, err := ps.chunk.Write(p)
 	if time.Since(ps.start) > time.Second {
-		err = ps.flush()
+		err = errors.Join(err, ps.Flush())
+		ps.start = time.Now()
 	}
-
-	return len(p), err
+	return n, err
 }
 
 func (ps *pubsub) Close() error {
 	defer ps.readers.Wait()
-	return errors.Join(ps.flush(), ps.Pubsub.Close())
+	return errors.Join(ps.Flush(), ps.Pubsub.Close())
 }
 
 func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {

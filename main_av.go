@@ -11,7 +11,7 @@ import (
 func init() {
 	// preserve packet boudaries
 	domain.StreamCopy = func(dst io.Writer, src io.Reader) (int64, error) {
-		buf := new(bytes.Buffer)
+		buf := bytes.NewBuffer(nil)
 
 		demuxer, err := av.NewDemuxer(io.TeeReader(src, buf))
 		if err != nil {
