@@ -107,46 +107,51 @@ func (svc *streamingService) Subscribe(ctx context.Context, s StreamSub, w io.Wr
 	}
 }
 
-// streamingPubsub wraps an [internal.Pubsub] to buffer data and burst some when a new subscriber connects.
+// streamingPubsub wraps an [internal.Pubsub] to buffer writes and burst data when a new subscriber connects.
 type streamingPubsub struct {
 	internal.Pubsub
 
-	bufferingSince time.Time
-	buffer         *[]byte
-	burst          atomic.Pointer[[]byte]
+	index  int64     // the currently written chunk
+	chunks [4][]byte // time-constant-ish data chunks
+	start  time.Time // when the current chunk write started
 }
 
 func newStreamingPubsub() internal.Pubsub {
-	ps := streamingPubsub{
-		Pubsub:         internal.NewPubsub(),
-		bufferingSince: time.Now(),
-		buffer:         new([]byte),
-	}
-	ps.burst.Store(new([]byte))
-	return &ps
+	return &streamingPubsub{Pubsub: internal.NewPubsub()}
 }
 
+// Write buffers the data in ringed chunks of roughly equal durations.
 func (ps *streamingPubsub) Write(p []byte) (int, error) {
-	*ps.buffer = append(*ps.buffer, p...)
-	if time.Since(ps.bufferingSince) < 3*time.Second {
+	ps.chunks[ps.index] = append(ps.chunks[ps.index], p...)
+	if time.Since(ps.start) < time.Second {
 		return len(p), nil
 	}
 
-	_, err := ps.Pubsub.Write(*ps.buffer)
-	ps.bufferingSince = time.Now()
-	ps.buffer = ps.burst.Swap(ps.buffer)
-	*ps.buffer = (*ps.buffer)[:0]
+	_, err := ps.Pubsub.Write(ps.chunks[ps.index])
+
+	atomic.StoreInt64(&ps.index, (ps.index+1)%int64(len(ps.chunks)))
+	ps.chunks[ps.index] = ps.chunks[ps.index][:0]
+	ps.start = time.Now()
 
 	return len(p), err
 }
 
+// WriteTo starts by writing the buffered data chunks, excepted the current
+// and the next to be (for clearance, meaning that we need at least 3 chunks).
 func (ps *streamingPubsub) WriteTo(w io.Writer) (int64, error) {
-	n, err := w.Write(*ps.burst.Load())
-	if err != nil {
-		return int64(n), err
+	var n int64
+
+	index := atomic.LoadInt64(&ps.index)
+	for _, buf := range append(ps.chunks[index:], ps.chunks[:index]...)[2:] {
+		wn, err := w.Write(buf)
+		n += int64(wn)
+		if err != nil {
+			return n, err
+		}
 	}
+
 	m, err := ps.Pubsub.WriteTo(w)
-	return int64(n) + m, err
+	return n + m, err
 }
 
 type debouncedStreamingService struct {
