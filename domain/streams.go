@@ -13,9 +13,8 @@ import (
 )
 
 var (
-	ErrStreamExists       = errors.New("domain: stream exists")
-	ErrStreamNotFound     = errors.New("domain: stream not found")
-	ErrStreamNotAvailable = errors.New("domain: stream not available")
+	ErrStreamExists   = errors.New("domain: stream exists")
+	ErrStreamNotFound = errors.New("domain: stream not found")
 )
 
 type (
@@ -102,15 +101,13 @@ func (svc *streamsService) Publish(ctx context.Context, s StreamPub, r io.Reader
 			}
 
 			ps, _ := svc.streamsPubsub.Load(sub)
-			if ps == nil {
-				ps, _ = svc.streamsPubsub.LoadOrStore(sub, newStreamsPubsub())
-			}
-
-			ps.(internal.Pubsub).Write(p) //nolint: errcheck,gosec // always valid and never fails
+			ps.(*streamsPubsub).Write(p) //nolint: errcheck,gosec // always valid and never fails
 		}
 
 		return len(p), nil
 	})
+
+	svc.streamsPubsub.LoadOrStore(s.AsSub(), newStreamsPubsub())
 
 	svc.hooks.PublishStart(ctx, s)
 	defer svc.hooks.PublishStop(ctx, s, time.Now())
@@ -120,16 +117,14 @@ func (svc *streamsService) Publish(ctx context.Context, s StreamPub, r io.Reader
 func (svc *streamsService) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (int64, error) {
 	w = internal.ContextWriter{Context: ctx, Writer: w}
 
-	switch ps, loaded := svc.streamsPubsub.Load(s); {
-	case !loaded:
+	ps, loaded := svc.streamsPubsub.Load(s)
+	if !loaded {
 		return 0, ErrStreamNotFound
-	case ps == nil:
-		return 0, ErrStreamNotAvailable
-	default:
-		svc.hooks.SubscribeStart(ctx, s)
-		defer svc.hooks.SubscribeStop(ctx, s, time.Now())
-		return ps.(internal.Pubsub).WriteTo(w) //nolint: errcheck // always valid
 	}
+
+	svc.hooks.SubscribeStart(ctx, s)
+	defer svc.hooks.SubscribeStop(ctx, s, time.Now())
+	return ps.(*streamsPubsub).WriteTo(w) //nolint: errcheck // always valid
 }
 
 func (svc *streamsService) streamsMap() map[StreamSub]StreamPub {

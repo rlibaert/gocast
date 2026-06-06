@@ -42,7 +42,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		_, err := reg.StreamsService.Subscribe(ctx, domain.StreamSub(stream), w)
 		switch {
 		case errors.Is(err, nil), errors.Is(err, context.Canceled), errors.Is(err, io.EOF):
-		case errors.Is(err, domain.ErrStreamNotFound), errors.Is(err, domain.ErrStreamNotAvailable):
+		case errors.Is(err, domain.ErrStreamNotFound):
 			httpStatusTextError(w, http.StatusNotFound)
 		default:
 			httpStatusTextError(w, http.StatusInternalServerError)
