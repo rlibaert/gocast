@@ -11,10 +11,16 @@ import (
 
 func tbServiceHooks(tb testing.TB) domain.ServiceHooks {
 	return domain.ServiceHooks{
-		PublishStart:   func(_ context.Context, s domain.StreamPub) { tb.Log("PublishStart", s) },
-		SubscribeStart: func(_ context.Context, s domain.StreamSub) { tb.Log("SubscribeStart", s) },
-		PublishStop:    func(_ context.Context, s domain.StreamPub, t time.Time) { tb.Log("PublishStop", s, time.Since(t)) },
-		SubscribeStop:  func(_ context.Context, s domain.StreamSub, t time.Time) { tb.Log("SubscribeStop", s, time.Since(t)) },
+		PublishStartStop: func(_ context.Context, s domain.StreamPub) func() {
+			t := time.Now()
+			tb.Log("PublishStart", s)
+			return func() { tb.Log("PublishStop", s, time.Since(t)) }
+		},
+		SubscribeStartStop: func(_ context.Context, s domain.StreamSub) func() {
+			t := time.Now()
+			tb.Log("SubscribeStart", s)
+			return func() { tb.Log("SubscribeStop", s, time.Since(t)) }
+		},
 	}
 }
 

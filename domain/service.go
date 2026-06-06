@@ -54,10 +54,8 @@ func ServiceStreamsMap(svc Service) map[StreamSub]StreamPub {
 }
 
 type ServiceHooks struct {
-	PublishStart   func(ctx context.Context, s StreamPub)
-	PublishStop    func(ctx context.Context, s StreamPub, start time.Time)
-	SubscribeStart func(ctx context.Context, s StreamSub)
-	SubscribeStop  func(ctx context.Context, s StreamSub, start time.Time)
+	PublishStartStop   func(ctx context.Context, s StreamPub) (stop func())
+	SubscribeStartStop func(ctx context.Context, s StreamSub) (stop func())
 }
 
 // ServiceStreamCopy is the default function for copying stream data.
@@ -183,8 +181,7 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 	svc.mu.Unlock()
 	defer svc.mu.Lock()
 
-	svc.hooks.PublishStart(ctx, s)
-	defer svc.hooks.PublishStop(ctx, s, time.Now())
+	defer svc.hooks.PublishStartStop(ctx, s)()
 	return svc.streamCopy(internal.WriterContext(ctx, svc.streamPubWriter(s)), r)
 }
 
@@ -209,8 +206,7 @@ func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (in
 		return 0, ErrStreamNotFound
 	}
 
-	svc.hooks.SubscribeStart(ctx, s)
-	defer svc.hooks.SubscribeStop(ctx, s, time.Now())
+	defer svc.hooks.SubscribeStartStop(ctx, s)()
 	return ps.(internal.Pubsub).WriteTo(internal.WriterContext(ctx, w)) //nolint: errcheck // always valid
 }
 
