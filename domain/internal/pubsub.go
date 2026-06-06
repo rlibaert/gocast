@@ -3,6 +3,7 @@ package internal
 import (
 	"errors"
 	"io"
+	"slices"
 	"sync"
 	"sync/atomic"
 )
@@ -19,7 +20,7 @@ var ErrPubsubClosed = errors.New("domain: pubsub closed")
 type pubsub struct {
 	mu     sync.Mutex
 	closed bool
-	subs   map[chan<- *refbuf]struct{}
+	subs   []chan<- *refbuf
 	subsWg sync.WaitGroup
 
 	refbufs sync.Pool
@@ -33,7 +34,6 @@ type refbuf struct {
 
 func NewPubsub() Pubsub {
 	return new(pubsub{
-		subs: map[chan<- *refbuf]struct{}{},
 		refbufs: sync.Pool{
 			New: func() any { return new(refbuf) },
 		},
@@ -52,7 +52,7 @@ func (ps *pubsub) Write(p []byte) (int, error) {
 		rb := ps.refbufs.Get().(*refbuf) //nolint: errcheck // always a non-nil [*refbuf]
 		rb.b = append(rb.b[:0], p...)
 		rb.n = int64(len(ps.subs))
-		for ch := range ps.subs {
+		for _, ch := range ps.subs {
 			ch <- rb
 		}
 	}
@@ -71,10 +71,10 @@ func (ps *pubsub) Close() error {
 	}
 	ps.closed = true
 
-	for ch := range ps.subs {
+	for _, ch := range ps.subs {
 		close(ch)
-		delete(ps.subs, ch)
 	}
+	ps.subs = nil
 
 	return nil
 }
@@ -89,16 +89,17 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 
 	const refbufQueueSize = 16
 	ch := make(chan *refbuf, refbufQueueSize)
-	ps.subs[ch] = struct{}{}
+	ps.subs = append(ps.subs, ch)
 	ps.subsWg.Add(1)
 
 	ps.mu.Unlock()
 	defer func() {
 		ps.mu.Lock()
 
-		if _, exist := ps.subs[ch]; exist {
+		if i := slices.Index(ps.subs, ch); i != -1 {
 			close(ch)
-			delete(ps.subs, ch)
+			ps.subs[i], ps.subs[len(ps.subs)-1] = ps.subs[len(ps.subs)-1], nil
+			ps.subs = ps.subs[:len(ps.subs)-1]
 		}
 		ps.subsWg.Done()
 	}()
