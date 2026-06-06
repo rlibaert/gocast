@@ -96,7 +96,7 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 		return 0, ErrPubsubClosed
 	}
 
-	const refbufQueueSize = 16
+	const refbufQueueSize = 8
 	ch := make(chan *refbuf, refbufQueueSize)
 	ps.subs = append(ps.subs, ch)
 	ps.subsWg.Add(1)

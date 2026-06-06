@@ -154,7 +154,7 @@ func newStreamsPubsub() internal.Pubsub {
 // Write buffers the data in ringed chunks of roughly equal durations.
 func (ps *streamsPubsub) Write(p []byte) (int, error) {
 	ps.chunks[ps.index] = append(ps.chunks[ps.index], p...)
-	if time.Since(ps.start) < time.Second {
+	if time.Since(ps.start) < 2*time.Second {
 		return len(p), nil
 	}
 
