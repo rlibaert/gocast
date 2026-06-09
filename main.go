@@ -44,7 +44,9 @@ func main() {
 	flag.VisitAll(func(f *flag.Flag) {
 		env := "GOCAST_" + strings.NewReplacer(".", "_", "-", "").Replace(strings.ToUpper(f.Name))
 		f.Usage = fmt.Sprintf("%s (env %s)", f.Usage, env)
-		f.Value.Set(os.Getenv(env)) //nolint: errcheck,gosec // discard invalid value
+		if value, ok := os.LookupEnv(env); ok {
+			f.Value.Set(value) //nolint: errcheck,gosec // discard invalid value
+		}
 	})
 	flag.Parse()
 
