@@ -5,7 +5,6 @@ go 1.26.0
 require (
 	github.com/VictoriaMetrics/metrics v1.42.0
 	github.com/datarhei/gosrt v0.10.0
-	golang.org/x/sync v0.20.0
 )
 
 require (
