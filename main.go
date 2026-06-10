@@ -32,7 +32,7 @@ func main() {
 	main2(ctx)
 }
 
-func main2(ctxMain context.Context) {
+func main2(ctx context.Context) {
 	//nolint:golines
 	var (
 		logLevel              = slog.LevelInfo
@@ -73,37 +73,40 @@ func main2(ctxMain context.Context) {
 	svc, svcMetricsWriter := observability.ObservableService(svc, logger, "gocast_")
 	metrics.RegisterMetricsWriter(svcMetricsWriter)
 
+	wg := sync.WaitGroup{}
+	defer wg.Wait()
+
 	var (
 		svcSigh = svcSignalHandler(svc, *configFilename, logger)
 		svcHTTP = svcHTTPServer(svc, *httpAddr, *httpReadHeaderTimeout, logger, metrics)
 		svcICY  = svcICYServer(svc, *icyAddr, *httpReadHeaderTimeout, logger)
 		svcSRT  = svcSRTServer(svc, *srtAddr, logger)
 	)
-
-	wg := sync.WaitGroup{}
-	{
-		ctx, cancel := context.WithCancelCause(ctxMain)
-		defer cancel(nil)
-
-		wg.Go(func() { cancel(svcSigh(ctx, syscall.SIGHUP)) })
-		wg.Go(func() { cancel(svcHTTP.ListenAndServe()) })
-		wg.Go(func() { cancel(svcICY.ListenAndServe()) })
-		wg.Go(func() { cancel(svcSRT.ListenAndServe()) })
-		logger.Info("starting routines") //nolint: sloglint,nolintlint
-
-		<-ctx.Done()
-		logger.Error("context done", "err", ctx.Err(), "cause", context.Cause(ctx)) //nolint: sloglint,nolintlint
-	}
-	{
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	//nolint:errcheck,gosec // such deferred statements usually discard errors
+	defer func() {
+		shutdownContext, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
 
-		wg.Go(func() { svcHTTP.Shutdown(ctx); svcHTTP.Close() }) //nolint:errcheck,gosec // about to exit
-		wg.Go(func() { svcICY.Shutdown(ctx); svcICY.Close() })   //nolint:errcheck,gosec // about to exit
-		wg.Go(func() { svcSRT.Shutdown() })
-		logger.Info("stopping routines") //nolint: sloglint,nolintlint
-	}
-	wg.Wait()
+		wg.Go(func() { svcHTTP.Shutdown(shutdownContext); svcHTTP.Close() })
+		wg.Go(func() { svcICY.Shutdown(shutdownContext); svcICY.Close() })
+		wg.Go(func() {
+			time.Sleep(time.Second) // mitigate race with [srt.Server.ListenAndServe]
+			svcSRT.Shutdown()
+		})
+		logger.Info("routines stopping") //nolint: sloglint,nolintlint
+	}()
+
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+
+	wg.Go(func() { cancel(svcSigh(ctx, syscall.SIGHUP)) })
+	wg.Go(func() { cancel(svcHTTP.ListenAndServe()) })
+	wg.Go(func() { cancel(svcICY.ListenAndServe()) })
+	wg.Go(func() { cancel(svcSRT.ListenAndServe()) })
+	logger.Info("routines starting") //nolint: sloglint,nolintlint
+
+	<-ctx.Done()
+	logger.Error("context done", "err", ctx.Err(), "cause", context.Cause(ctx)) //nolint: sloglint,nolintlint
 }
 
 func generateFromJSONFile[T any](ch chan<- *T, filename string) error {
