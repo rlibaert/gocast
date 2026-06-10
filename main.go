@@ -93,7 +93,7 @@ func main2(ctx context.Context) {
 			time.Sleep(time.Second) // mitigate race with [srt.Server.ListenAndServe]
 			svcSRT.Shutdown()
 		})
-		logger.Info("routines stopping") //nolint: sloglint,nolintlint
+		logger.Info("routines stopping")
 	}()
 
 	ctx, cancel := context.WithCancelCause(ctx)
@@ -103,10 +103,10 @@ func main2(ctx context.Context) {
 	wg.Go(func() { cancel(svcHTTP.ListenAndServe()) })
 	wg.Go(func() { cancel(svcICY.ListenAndServe()) })
 	wg.Go(func() { cancel(svcSRT.ListenAndServe()) })
-	logger.Info("routines starting") //nolint: sloglint,nolintlint
+	logger.Info("routines starting")
 
 	<-ctx.Done()
-	logger.Error("context done", "err", ctx.Err(), "cause", context.Cause(ctx)) //nolint: sloglint,nolintlint
+	logger.Error("context done", "err", ctx.Err(), "cause", context.Cause(ctx))
 }
 
 func generateFromJSONFile[T any](ch chan<- *T, filename string) error {
