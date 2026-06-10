@@ -77,10 +77,10 @@ func main2(ctx context.Context) {
 	defer wg.Wait()
 
 	var (
-		svcSigh = svcSignalHandler(svc, *configFilename, logger)
-		svcHTTP = svcHTTPServer(svc, *httpAddr, *httpReadHeaderTimeout, logger, metrics)
-		svcICY  = svcICYServer(svc, *icyAddr, *httpReadHeaderTimeout, logger)
-		svcSRT  = svcSRTServer(svc, *srtAddr, logger)
+		svcSigh = svcSignalHandler(svc, logger, *configFilename)
+		svcHTTP = svcHTTPServer(svc, logger.With("srv", "http"), *httpAddr, *httpReadHeaderTimeout, metrics)
+		svcICY  = svcICYServer(svc, logger.With("srv", "icy"), *icyAddr, *httpReadHeaderTimeout)
+		svcSRT  = svcSRTServer(svc, logger.With("srv", "srt"), *srtAddr)
 	)
 	//nolint:errcheck,gosec // such deferred statements usually discard errors
 	defer func() {
@@ -128,8 +128,8 @@ func generateFromJSONFile[T any](ch chan<- *T, filename string) error {
 
 func svcSignalHandler(
 	svc domain.Service,
-	filename string,
 	logger *slog.Logger,
+	filename string,
 ) func(context.Context, ...os.Signal) error {
 	configs := make(chan *protoconfig.Config)
 	protoconfig.ServiceRegisterer{Service: svc}.Register(configs)
@@ -148,7 +148,12 @@ func svcSignalHandler(
 				return ctx.Err()
 
 			case sig := <-sigs:
-				logger.Info("reloaded config", "signal", sig, "err", generateFromJSONFile(configs, filename))
+				switch err := generateFromJSONFile(configs, filename); err {
+				case nil:
+					logger.Info("config reload ok", "signal", sig)
+				default:
+					logger.Warn("config reload not ok", "signal", sig, "err", err)
+				}
 			}
 		}
 	}
@@ -156,18 +161,18 @@ func svcSignalHandler(
 
 func svcHTTPServer(
 	svc domain.Service,
+	logger *slog.Logger,
 	addr string,
 	rht time.Duration,
-	logger *slog.Logger,
 	metrics *metrics.Set,
 ) *http.Server {
 	mux := http.NewServeMux()
-	protohttp.ServiceRegisterer{Service: svc}.Register(mux)
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 		metrics.WritePrometheus(w)
 	})
+	protohttp.ServiceRegisterer{Service: svc}.Register(mux)
 	return &http.Server{
-		ErrorLog:          slog.NewLogLogger(logger.With("srv", "http").Handler(), slog.LevelWarn),
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 		Addr:              addr,
 		ReadHeaderTimeout: rht,
 		Handler:           mux,
@@ -176,14 +181,14 @@ func svcHTTPServer(
 
 func svcICYServer(
 	svc domain.Service,
+	logger *slog.Logger,
 	addr string,
 	rht time.Duration,
-	logger *slog.Logger,
 ) *http.Server {
 	mux := http.NewServeMux()
 	protoicy.ServiceRegisterer{Service: svc}.Register(mux)
 	return &http.Server{
-		ErrorLog:          slog.NewLogLogger(logger.With("srv", "icy").Handler(), slog.LevelWarn),
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 		Addr:              addr,
 		ReadHeaderTimeout: rht,
 		Handler:           mux,
@@ -192,18 +197,16 @@ func svcICYServer(
 
 func svcSRTServer(
 	svc domain.Service,
-	addr string,
 	logger *slog.Logger,
+	addr string,
 ) *srt.Server {
-	srvErrorLog := slog.NewLogLogger(logger.With("srv", "srt").Handler(), slog.LevelWarn)
+	srvErrorLog := slog.NewLogLogger(logger.Handler(), slog.LevelWarn)
 	srv := &srt.Server{
 		Addr:   addr,
 		Config: new(srt.DefaultConfig()),
 	}
 	srv.Config.Logger = &srtLogger{srvErrorLog}
-	protosrt.ServiceRegisterer{
-		Service: svc,
-	}.Register(srv)
+	protosrt.ServiceRegisterer{Service: svc}.Register(srv)
 	return srv
 }
 
