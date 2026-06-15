@@ -1,0 +1,53 @@
+version: 2
+
+builds:
+  - env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - "amd64"
+    ldflags:
+      - -s -w
+      - -linkmode=external
+      - -extldflags=-static
+    #   - -X main.title={{ .ProjectName }}
+    #   - -X main.version={{ .Version }}
+    #   - -X main.revision={{ .ShortCommit }}
+    #   - -X main.created={{ .CommitDate }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+dockers:
+  - use: buildx
+    goos: linux
+    goarch: amd64
+    dockerfile: .goreleaser.Dockerfile
+    image_templates:
+      - "ghcr.io/rlibaert/{{ .ProjectName }}:{{ .Version }}"
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+    skip_push: "{{ .IsSnapshot }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^refacto:"
+      - "^style:"

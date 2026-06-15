@@ -1,7 +1,7 @@
 FROM golang:1.26-trixie AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential nasm
+    build-essential nasm zlib1g-dev
 
 ADD http://ffmpeg.org/releases/ffmpeg-8.1.tar.xz .
 RUN tar -xJf ffmpeg-8.1.tar.xz && \
@@ -19,9 +19,10 @@ RUN tar -xJf ffmpeg-8.1.tar.xz && \
 FROM builder AS build
 WORKDIR /workdir
 COPY . .
-RUN CGO_ENABLED=1 && \
+
+RUN CGO_ENABLED=1 \
     go build -ldflags="-s -w -linkmode=external -extldflags=-static" .
 
 FROM gcr.io/distroless/base-debian13:nonroot
-COPY --from=build /workdir/gocast /bin
-ENTRYPOINT [ "/bin/gocast" ]
+COPY --from=build /workdir/gocast /usr/local/bin/
+ENTRYPOINT [ "/usr/local/bin/gocast" ]

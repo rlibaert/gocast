@@ -5,7 +5,7 @@
 package av
 
 /*
-#cgo LDFLAGS: -Wl,--start-group -lavutil -lavformat -lavcodec -Wl,--end-group -lm
+#cgo LDFLAGS: -Wl,--start-group -lavutil -lavformat -lavcodec -Wl,--end-group -lm -lz
 
 #include <stdio.h>
 #include <libavutil/log.h>

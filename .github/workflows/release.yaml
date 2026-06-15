@@ -1,0 +1,51 @@
+name: goreleaser
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install required packages
+        run: sudo apt-get install -y build-essential nasm zlib1g-dev
+      - name: Install FFmpeg
+        run: |
+          wget http://ffmpeg.org/releases/ffmpeg-8.1.tar.xz
+          tar -xJf ffmpeg-8.1.tar.xz && \
+          cd ffmpeg-8.1 && \
+          ./configure \
+            --disable-all \
+            --enable-avutil --enable-avformat --enable-avcodec \
+            --enable-demuxer=mp3,aac \
+            --enable-parser=mpegaudio,aac* \
+            --enable-decoder=mp3*,aac* \
+          && \
+          make -j$(nproc) && \
+          sudo make install
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
