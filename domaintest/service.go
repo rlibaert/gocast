@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/rlibaert/gocast/domain"
-	"github.com/rlibaert/gocast/testing/assert"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type rwFunc func(p []byte) (int, error)
@@ -53,8 +54,8 @@ func (st ServiceTester) TestPublishSubscribe(t *testing.T) {
 			defer cancel()
 
 			n, err := st.Service.Publish(ctx, pub, pubReader(wgPubsPublishing.Done, pub))
-			assert.ErrIs(t, err, context.DeadlineExceeded)
-			assert.GT(t, n, 0)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			assert.Positive(t, n)
 		})
 	}
 	wgPubsPublishing.Wait()
@@ -65,11 +66,11 @@ func (st ServiceTester) TestPublishSubscribe(t *testing.T) {
 
 			re := regexp.MustCompile(`^(` + string(sub) + `)*$`)
 			n, err := st.Service.Subscribe(ctx, sub, rwFunc(func(p []byte) (int, error) {
-				assert.Expected(t, re.Match(p), string(p), "not "+re.String())
+				assert.True(t, re.Match(p), string(p), "not "+re.String())
 				return len(p), nil
 			}))
-			assert.ErrIs(t, err, nil)
-			assert.GT(t, n, 0)
+			require.NoError(t, err)
+			assert.Positive(t, n)
 		})
 	}
 }
@@ -92,8 +93,8 @@ func (st ServiceTester) TestFallback(t *testing.T) {
 		defer cancel()
 
 		n, err := st.Service.Publish(ctx, "foo", pubReader(wgPubsPublishing.Done, "foo"))
-		assert.ErrIs(t, err, context.DeadlineExceeded)
-		assert.GT(t, n, 0)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Positive(t, n)
 	})
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
@@ -101,8 +102,8 @@ func (st ServiceTester) TestFallback(t *testing.T) {
 		defer cancel()
 
 		n, err := st.Service.Publish(ctx, "bar", pubReader(wgPubsPublishing.Done, "bar"))
-		assert.ErrIs(t, err, context.DeadlineExceeded)
-		assert.GT(t, n, 0)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Positive(t, n)
 	})
 	wgPubsPublishing.Wait()
 
@@ -116,12 +117,12 @@ func (st ServiceTester) TestFallback(t *testing.T) {
 			if re == re1 && re2.Match(p) {
 				re = re2
 			}
-			assert.Expected(t, re.Match(p) || len(p) == 0, re, "does not match", string(p))
+			assert.Truef(t, re.Match(p) || len(p) == 0, "%v does not match %s", re, string(p))
 			return len(p), nil
 		}))
-		assert.ErrIs(t, err, nil)
-		assert.GT(t, n, 0)
-		assert.EQ(t, re, re2)
+		require.NoError(t, err)
+		assert.Positive(t, n)
+		assert.Same(t, re, re2)
 	})
 }
 
@@ -143,8 +144,8 @@ func (st ServiceTester) TestBackup(t *testing.T) {
 		defer cancel()
 
 		n, err := st.Service.Publish(ctx, "foo", pubReader(nil, "foo"))
-		assert.ErrIs(t, err, context.DeadlineExceeded)
-		assert.GT(t, n, 0)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Positive(t, n)
 	})
 
 	wgPubsPublishing := sync.WaitGroup{}
@@ -154,8 +155,8 @@ func (st ServiceTester) TestBackup(t *testing.T) {
 		defer cancel()
 
 		n, err := st.Service.Publish(ctx, "bar", pubReader(wgPubsPublishing.Done, "bar"))
-		assert.ErrIs(t, err, context.DeadlineExceeded)
-		assert.GT(t, n, 0)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Positive(t, n)
 	})
 	wgPubsPublishing.Wait()
 
@@ -169,12 +170,12 @@ func (st ServiceTester) TestBackup(t *testing.T) {
 			if re == re1 && re2.Match(p) {
 				re = re2
 			}
-			assert.Expected(t, re.Match(p) || len(p) == 0, re, "does not match", string(p))
+			assert.Truef(t, re.Match(p) || len(p) == 0, "%v does not match %s", re, string(p))
 			return len(p), nil
 		}))
-		assert.ErrIs(t, err, nil)
-		assert.GT(t, n, 0)
-		assert.EQ(t, re, re2)
+		require.NoError(t, err)
+		assert.Positive(t, n)
+		assert.Same(t, re, re2)
 	})
 }
 
@@ -193,8 +194,8 @@ func (st ServiceTester) TestPublishTitle(t *testing.T) {
 		defer cancel()
 
 		n, err := st.Service.Publish(ctx, "foo", pubReader(wgPubsPublishing.Done, "foo"))
-		assert.ErrIs(t, err, context.DeadlineExceeded)
-		assert.GT(t, n, 0)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Positive(t, n)
 	})
 	wgPubsPublishing.Wait()
 
@@ -204,11 +205,11 @@ func (st ServiceTester) TestPublishTitle(t *testing.T) {
 	})
 
 	const title = "lorem ipsum"
-	assert.ErrNil(t, st.Service.PublishTitle(t.Context(), "foo", title))
-	assert.EQ(t, *cmp.Or(domain.ServiceStreamSubTitle(st.Service, "foo"), new("<nil>")), title)
-	assert.EQ(t, *cmp.Or(domain.ServiceStreamSubTitle(st.Service, "toto"), new("<nil>")), title)
-	assert.EQ(t, *cmp.Or(domain.ServiceStreamSubTitle(st.Service, "tata"), new("<nil>")), title)
-	assert.ErrIs(t, st.Service.PublishTitle(t.Context(), "bar", ""), domain.ErrStreamNotFound)
+	require.NoError(t, st.Service.PublishTitle(t.Context(), "foo", title))
+	assert.Equal(t, title, *cmp.Or(domain.ServiceStreamSubTitle(st.Service, "foo"), new("<nil>")))
+	assert.Equal(t, title, *cmp.Or(domain.ServiceStreamSubTitle(st.Service, "toto"), new("<nil>")))
+	assert.Equal(t, title, *cmp.Or(domain.ServiceStreamSubTitle(st.Service, "tata"), new("<nil>")))
+	require.ErrorIs(t, st.Service.PublishTitle(t.Context(), "bar", ""), domain.ErrStreamNotFound)
 }
 
 func (st ServiceTester) TestCloseOnFallbacksRemoved(t *testing.T) {
@@ -233,20 +234,20 @@ func (st ServiceTester) TestCloseOnFallbacksRemoved(t *testing.T) {
 		defer cancel()
 
 		n, err := st.Service.Publish(ctx, "foo", pubReader(wgPubsPublishing.Done, "foo"))
-		assert.ErrIs(t, err, context.DeadlineExceeded)
-		assert.GT(t, n, 0)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Positive(t, n)
 	})
 	wgPubsPublishing.Wait()
 
 	t.Run("toto gets closed", func(t *testing.T) {
 		n, err := st.Service.Subscribe(t.Context(), "toto", io.Discard)
-		assert.ErrIs(t, err, nil)
-		assert.GT(t, n, 0)
+		require.NoError(t, err)
+		assert.Positive(t, n)
 	})
 
 	t.Run("foo still opened", func(t *testing.T) {
 		n, err := st.Service.Subscribe(t.Context(), "foo", io.Discard)
-		assert.ErrIs(t, err, nil)
-		assert.GT(t, n, 0)
+		require.NoError(t, err)
+		assert.Positive(t, n)
 	})
 }

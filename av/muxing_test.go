@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/rlibaert/gocast/av"
-	"github.com/rlibaert/gocast/testing/assert"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 //go:embed testdata
@@ -22,16 +23,16 @@ func TestDemux(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.file, func(t *testing.T) {
 			f, err := testdataFS.Open(tc.file)
-			assert.ErrNil(t, err)
+			require.NoError(t, err)
 			defer f.Close()
 
 			d, err := av.NewDemuxer(f)
-			assert.ErrNil(t, err)
+			require.NoError(t, err)
 			defer d.Close()
 
 			n, err := av.Remux(av.Discard, d)
-			assert.ErrNil(t, err)
-			assert.EQ(t, n, tc.packets)
+			require.NoError(t, err)
+			assert.Equal(t, n, tc.packets)
 		})
 	}
 }

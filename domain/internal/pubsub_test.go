@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/rlibaert/gocast/domain/internal"
-	"github.com/rlibaert/gocast/testing/assert"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPubsub_data_copy(t *testing.T) {
@@ -19,16 +20,16 @@ func TestPubsub_data_copy(t *testing.T) {
 	wg.Go(func() {
 		b := strings.Builder{}
 		n, err := ps.WriteTo(&b)
-		assert.ErrNil(t, err)
-		assert.EQ(t, n, 9)
-		assert.EQ(t, b.String(), "foobarbaz")
+		require.NoError(t, err)
+		assert.Equal(t, int64(9), n)
+		assert.Equal(t, "foobarbaz", b.String())
 	})
 	wg.Go(func() {
 		time.Sleep(time.Second)
 		fmt.Fprint(ps, "foo")
 		fmt.Fprint(ps, "bar")
 		fmt.Fprint(ps, "baz")
-		assert.ErrNil(t, ps.Close())
+		require.NoError(t, ps.Close())
 	})
 
 	wg.Wait()
@@ -42,7 +43,7 @@ func BenchmarkPubsub_Write10k(b *testing.B) {
 	for range 10_000 {
 		go func() {
 			_, err := ps.WriteTo(io.Discard)
-			assert.ErrIs(b, err, nil)
+			assert.NoError(b, err)
 		}()
 	}
 	go func() {
@@ -55,7 +56,7 @@ func BenchmarkPubsub_Write10k(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		n, err := ps.Write(buf)
-		assert.ErrNil(b, err)
+		require.NoError(b, err)
 		b.SetBytes(int64(n))
 	}
 }
