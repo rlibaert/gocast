@@ -11,10 +11,9 @@ builds:
       - -s -w
       - -linkmode=external
       - -extldflags=-static
-    #   - -X main.title={{ .ProjectName }}
-    #   - -X main.version={{ .Version }}
-    #   - -X main.revision={{ .ShortCommit }}
-    #   - -X main.created={{ .CommitDate }}
+      - -X main.version={{ .Version }}
+      - -X main.revision={{ .Commit }}
+      - -X main.date={{ .CommitDate }}
 
 archives:
   - formats: [tar.gz]

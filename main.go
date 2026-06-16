@@ -26,6 +26,13 @@ import (
 	protosrt "github.com/rlibaert/gocast/protos/proto-srt"
 )
 
+//nolint:gochecknoglobals // set by builder
+var (
+	version  string
+	revision string
+	date     string
+)
+
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -58,6 +65,12 @@ func main2(ctx context.Context) {
 		Level: logLevel,
 	}))
 	slog.SetDefault(logger)
+
+	logger.Info("starting Gocast", slog.Group("build",
+		"version", version,
+		"revision", revision,
+		"date", date,
+	))
 
 	metricsWriterProcess := metrics.WriteProcessMetrics
 	metrics := metrics.NewSet()
