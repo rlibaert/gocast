@@ -257,19 +257,20 @@ type serviceDebounced struct {
 }
 
 func (svc serviceDebounced) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
-	n, err, r, ok := svc.debounce(ctx, r)
+	n, err, r, ok := svc.debounce(ctx, r, svc.duration)
 	if ok {
 		return svc.Service.Publish(ctx, s, r)
 	}
 	return n, err
 }
 
-// debounce reads the first bytes from the reader until the timeout is reached.
-// It returns the number of bytes read & the reading error, a replacement for the altered reader and a success flag.
-func (svc serviceDebounced) debounce(parent context.Context, r io.Reader) (int64, error, io.Reader, bool) { //nolint:revive,staticcheck,golines // not an idiomatic error
-	var errStop error = struct{ error }{}
+// debounce ensures a reader can be read for a minimum duration.
+// It actually buffers the reader and returns the number of bytes read & error,
+// a replacement for the altered reader and a success flag.
+func (serviceDebounced) debounce(parent context.Context, r io.Reader, d time.Duration) (int64, error, io.Reader, bool) { //nolint:revive,staticcheck,golines // not an idiomatic error
+	errStop := struct{ error }{}
 
-	ctx, cancel := context.WithTimeoutCause(parent, svc.duration, errStop)
+	ctx, cancel := context.WithTimeoutCause(parent, d, errStop)
 	defer cancel()
 
 	b := bytes.NewBuffer(nil)
