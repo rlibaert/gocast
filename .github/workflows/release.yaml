@@ -14,7 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install required packages
-        run: sudo apt-get install -y build-essential nasm zlib1g-dev
+        run: |
+          sudo apt-get update && \
+          sudo apt-get install --no-install-recommends -y build-essential nasm zlib1g-dev
       - name: Install FFmpeg
         run: |
           wget http://ffmpeg.org/releases/ffmpeg-8.1.tar.xz
