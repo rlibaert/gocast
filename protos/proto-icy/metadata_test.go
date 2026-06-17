@@ -5,7 +5,20 @@ import (
 
 	"github.com/rlibaert/gocast/protos/proto-icy"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestMetaint(t *testing.T) {
+	orig := proto.Metaint
+	t.Cleanup(func() { proto.Metaint = orig }) //nolint: reassign // only to restore original after testing
+
+	require.Error(t, proto.Metaint.UnmarshalText([]byte("foo")))
+	require.NoError(t, proto.Metaint.UnmarshalText([]byte("12345")))
+
+	b, err := proto.Metaint.MarshalText()
+	require.NoError(t, err)
+	assert.Equal(t, "12345", string(b))
+}
 
 //nolint:golines
 func TestMetadata(t *testing.T) {

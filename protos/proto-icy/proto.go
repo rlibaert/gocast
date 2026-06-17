@@ -95,15 +95,18 @@ func (reg ServiceRegisterer) getStream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (reg ServiceRegisterer) getAdminMetadata(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	q := r.URL.Query()
-
-	if q.Get("mode") != "updinfo" {
+	switch r.URL.Query().Get("mode") {
+	case "updinfo":
+		reg.getAdminMetadataUpdinfo(w, r)
+	default:
 		httpStatusTextError(w, http.StatusBadRequest)
 		return
 	}
+}
 
-	stream := strings.TrimPrefix(q.Get("mount"), "/")
+func (reg ServiceRegisterer) getAdminMetadataUpdinfo(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	q := r.URL.Query()
 
 	var title string
 	switch {
@@ -112,9 +115,11 @@ func (reg ServiceRegisterer) getAdminMetadata(w http.ResponseWriter, r *http.Req
 	case q.Has("artist") && q.Has("title"):
 		title = fmt.Sprint(q.Get("artist"), " - ", q.Get("title"))
 	default:
+		httpStatusTextError(w, http.StatusBadRequest)
 		return
 	}
 
+	stream := strings.TrimPrefix(q.Get("mount"), "/")
 	err := reg.Service.PublishTitle(ctx, domain.StreamPub(stream), title)
 	switch {
 	case errors.Is(err, nil), errors.Is(err, context.Canceled):

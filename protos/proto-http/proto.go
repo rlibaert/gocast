@@ -25,7 +25,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		switch {
 		case errors.Is(err, nil), errors.Is(err, context.Canceled):
 		case errors.Is(err, domain.ErrStreamExists):
-			httpStatusTextError(w, http.StatusLocked)
+			httpStatusTextError(w, http.StatusConflict)
 		default:
 			httpStatusTextError(w, http.StatusInternalServerError)
 		}

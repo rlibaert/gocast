@@ -11,6 +11,7 @@ import (
 
 	"github.com/rlibaert/gocast/domain"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -250,4 +251,26 @@ func (st ServiceTester) TestCloseOnFallbacksRemoved(t *testing.T) {
 		require.NoError(t, err)
 		assert.Positive(t, n)
 	})
+}
+
+type ServiceMock struct {
+	domain.Service
+	mock.Mock
+}
+
+var _ domain.Service = (*ServiceMock)(nil)
+
+func (m *ServiceMock) Publish(ctx context.Context, pub domain.StreamPub, r io.Reader) (int64, error) {
+	args := m.Called(ctx, pub, r)
+	return int64(args.Int(0)), args.Error(1)
+}
+
+func (m *ServiceMock) Subscribe(ctx context.Context, sub domain.StreamSub, w io.Writer) (int64, error) {
+	args := m.Called(ctx, sub, w)
+	return int64(args.Int(0)), args.Error(1)
+}
+
+func (m *ServiceMock) PublishTitle(ctx context.Context, pub domain.StreamPub, title string) error {
+	args := m.Called(ctx, pub, title)
+	return args.Error(0)
 }
