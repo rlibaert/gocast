@@ -26,7 +26,9 @@ import (
 	protosrt "github.com/rlibaert/gocast/protos/proto-srt"
 )
 
-//nolint:gochecknoglobals // set by builder
+// build-time information
+//
+//nolint:gochecknoglobals // set by builder through ldflags
 var (
 	version  string
 	revision string
@@ -75,6 +77,11 @@ func main2(ctx context.Context) {
 	metricsWriterProcess := metrics.WriteProcessMetrics
 	metrics := metrics.NewSet()
 	metrics.RegisterMetricsWriter(metricsWriterProcess)
+
+	metricsInfo := fmt.Sprintf("%sinfo{version=%q,revision=%q} 1\n", "gocast_", version, revision)
+	metrics.RegisterMetricsWriter(func(w io.Writer) {
+		io.WriteString(w, metricsInfo) //nolint: errcheck,gosec // equivalent to [fmt.Fprint]
+	})
 
 	svc := domain.NewService(serviceHooks(logger, metrics), serviceStreamCopy, *svcDebounce)
 	metrics.RegisterMetricsWriter(func(w io.Writer) {
