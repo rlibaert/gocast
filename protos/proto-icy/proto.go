@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/rlibaert/gocast/domain"
+	"github.com/rlibaert/gocast/protos/internal"
 )
 
 type ServiceRegisterer struct {
@@ -63,22 +64,18 @@ func (reg ServiceRegisterer) getStream(w http.ResponseWriter, r *http.Request) {
 	var writer io.Writer = w
 	if r.Header.Get("Icy-Metadata") == "1" {
 		mtitle, mbytes := (*string)(nil), Metadata(nil)
-		writer = &paginatedWriter{
-			Writer:   w,
-			pageSize: Metaint.int,
-			pageFooter: func() []byte {
-				t := domain.ServiceStreamSubTitle(reg.Service, domain.StreamSub(stream))
-				switch t {
-				case mtitle:
-					// no changes
-				case nil:
-					mtitle, mbytes = t, Metadata(mbytes)
-				default:
-					mtitle, mbytes = t, Metadata(mbytes, "StreamTitle='", *t, "';")
-				}
-				return mbytes
-			},
-		}
+		writer = internal.PageWriter(w, Metaint.int, func() []byte {
+			t := domain.ServiceStreamSubTitle(reg.Service, domain.StreamSub(stream))
+			switch t {
+			case mtitle:
+				// no changes
+			case nil:
+				mtitle, mbytes = t, Metadata(mbytes)
+			default:
+				mtitle, mbytes = t, Metadata(mbytes, "StreamTitle='", *t, "';")
+			}
+			return mbytes
+		})
 		w.Header().Set("Icy-Metaint", Metaint.string)
 	}
 
@@ -128,35 +125,4 @@ func (reg ServiceRegisterer) getAdminMetadataUpdinfo(w http.ResponseWriter, r *h
 	default:
 		httpStatusTextError(w, http.StatusInternalServerError)
 	}
-}
-
-type paginatedWriter struct {
-	io.Writer
-
-	pageSize   int
-	pageLength int
-	pageFooter func() []byte
-}
-
-func (pw *paginatedWriter) Write(p []byte) (int, error) {
-	n := 0
-
-	for len(p) >= pw.pageSize-pw.pageLength {
-		wn, err := pw.Writer.Write(p[:pw.pageSize-pw.pageLength])
-		n += wn
-		p = p[wn:]
-		if err != nil {
-			return n, err
-		}
-
-		_, err = pw.Writer.Write(pw.pageFooter())
-		if err != nil {
-			return n, err
-		}
-		pw.pageLength = 0
-	}
-
-	wn, err := pw.Writer.Write(p)
-	pw.pageLength += wn
-	return n + wn, err
 }
