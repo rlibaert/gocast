@@ -9,6 +9,7 @@ services:
     ports:
       - 8080:8080
       - 8000:8000
+      - 6000:6000/udp
 
   sources:
     image: jrottenberg/ffmpeg
@@ -19,7 +20,7 @@ services:
       -map [A] -f mp3 http://gocast:8080/streams/foo
       -map [B] -f adts icecast://gocast:8000/bar
       -map [C] -f adts -legacy_icecast 1 icecast://gocast:8000/bar-leg
-      -map [D] -f adts srt://gocast:6000?streamid=pub:baz
+      -map [D] -f adts srt://gocast:6000?streamid=publish:baz
     depends_on:
       - gocast
 

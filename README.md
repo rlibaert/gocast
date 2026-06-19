@@ -24,7 +24,7 @@ By default, the server listens on ports:
 
 - `8080` for HTTP
 - `8000` for [Icecast]-style HTTP interface (ICY)
-- `6000` for [Secure Reliable Transport] (SRT)
+- `6000/udp` for [Secure Reliable Transport] (SRT)
 
 The latest binary is available on the [releases page](https://github.com/rlibaert/gocast/releases)
 or you can use the [container image](https://github.com/rlibaert/gocast/pkgs/container/gocast):
