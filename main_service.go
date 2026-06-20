@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -65,7 +66,13 @@ func serviceHooks(logger *slog.Logger, set *metrics.Set) domain.ServiceHooks {
 	}
 }
 
-// serviceStreamCopy is like [domain.ServiceStreamCopy] but preserves packet boudaries.
+// serviceStreamCopy is like [domain.ServiceStreamCopy] but ensures that the
+// bytestream is a valid encoded stream and preserves its packet boundaries.
+//
+// The principle behind this highly empirical function is to buffer every
+// reads required to demux a packet before actually writing to the writer.
+// Also, note that [bufio] is not used: its fixed-size writes would likely
+// cut through packets.
 func serviceStreamCopy(w io.Writer, r io.Reader) (int64, error) {
 	buf := bytes.NewBuffer(nil)
 
@@ -76,18 +83,16 @@ func serviceStreamCopy(w io.Writer, r io.Reader) (int64, error) {
 	defer demuxer.Close()
 
 	n := int64(0)
-	_, err = av.Remux(av.Discard, demuxerFunc(func(p *av.Packet) error {
-		derr := demuxer.Demux(p)
-		if derr != nil {
-			return derr
-		}
+	muxer := muxerFunc(func(p *av.Packet) error {
 		wn, werr := buf.WriteTo(w)
 		n += wn
-		return werr
-	}))
+		return errors.Join(werr, av.Discard.Mux(p))
+	})
+
+	_, err = av.Remux(muxer, demuxer)
 	return n, err
 }
 
-type demuxerFunc func(*av.Packet) error
+type muxerFunc func(*av.Packet) error
 
-func (f demuxerFunc) Demux(p *av.Packet) error { return f(p) }
+func (f muxerFunc) Mux(p *av.Packet) error { return f(p) }
