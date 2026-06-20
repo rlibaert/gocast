@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Gocast Config",
+  "type": "object",
+  "properties": {
+    "fallbacks": {
+      "type": "object",
+      "description": "Subscribable streams mapped to an ordered list of published streams to fallback to",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 0
+      }
+    }
+  },
+  "additionalProperties": false
+}

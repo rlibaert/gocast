@@ -5,7 +5,7 @@ services:
       dockerfile: deployment/Dockerfile
     command: -service.debounce=3s
     volumes:
-      - ./gocast.json:/etc/gocast/config.json
+      - ./config.json:/etc/gocast/config.json
     ports:
       - 8080:8080
       - 8000:8000

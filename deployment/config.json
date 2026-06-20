@@ -1,4 +1,5 @@
 {
+  "$schema": "config.schema.json",
   "fallbacks": {
     "toto": ["bar", "baz"],
     "tata": ["quu", "foo"]
