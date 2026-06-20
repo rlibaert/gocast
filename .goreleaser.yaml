@@ -24,6 +24,11 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - config.json
+      - config.schema.json
 
 dockers:
   - use: buildx
@@ -40,6 +45,11 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.created={{.Date}}"
     skip_push: "{{ .IsSnapshot }}"
+    extra_files:
+      - LICENSE
+      - README.md
+      - config.json
+      - config.schema.json
 
 changelog:
   sort: asc
