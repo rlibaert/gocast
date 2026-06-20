@@ -6,53 +6,57 @@
 **Gocast** is a simple media streaming server, inspired by [Icecast].
 
 This project is an attempt to use up-to-date technology to offer a modern take
-on Internet radio streaming:
-
-- High scalability out of the box thanks to Go's concurrency model
-- Multi-protocol support (HTTP, ICY, SRT)
-- Prometheus metrics
-- Cloud-native development approach (somewhat)
+on Internet radio streaming.
 
 > [!NOTE]
-> While there is no intention to imitate [Icecast], some of its features are
+> While there is no intention to imitate Icecast, some of its features are
 > reimplemented. The primary motivation is to not break compatibility with
 > existing software.
+
+## Features
+
+- Multi-protocol support (HTTP, ICY, SRT)
+- Compatible with Icecast's `PUT` & legacy `SOURCE` protocols as well as
+  in-band metadata
+- Strong scalability out of the box thanks to Go's concurrency model
+- Support for MP3 & AAC
+- Sources fallback
+- Prometheus metrics
 
 ## Getting started
 
 By default, the server listens on ports:
 
 - `8080` for HTTP
-- `8000` for [Icecast]-style HTTP interface (ICY)
+- `8000` for Icecast-style HTTP interface (ICY)
 - `6000/udp` for [Secure Reliable Transport] (SRT)
 
 The latest binary is available on the [releases page](https://github.com/rlibaert/gocast/releases)
 or you can use the [container image](https://github.com/rlibaert/gocast/pkgs/container/gocast):
 
 ```bash
-docker run --rm -p 8080:8080 -p 8000:8000 -p 6000/udp:6000/udp ghcr.io/rlibaert/gocast:latest
+$ docker run --rm -p 8080:8080 -p 8000:8000 -p 6000/udp:6000/udp ghcr.io/rlibaert/gocast
 ```
 
 You can use an Icecast-compatible client to broadcast to the server on port
 `8000` or rely on more exotic setups, for example using FFmpeg:
 
 ```bash
-ffmpeg -i ... http://localhost:8080/streams/foo.mp3
-ffmpeg -i ... srt://localhost:6000?streamid=publish:foo.mp3
+$ ffmpeg -i ... "http://localhost:8080/streams/foo.mp3"
+$ ffmpeg -i ... "srt://localhost:6000?streamid=publish:foo.mp3"
 ```
 
 The streams may then be consumed:
 
 ```bash
-ffplay -i http://localhost:8080/streams/foo.mp3
-ffplay -i srt://localhost:6000?streamid=foo.mp3
+$ ffplay -i "http://localhost:8080/streams/foo.mp3"
+$ ffplay -i "srt://localhost:6000?streamid=foo.mp3"
 ```
 
-If your client is compatible with Icecast's in-band metadata, they will be
-served:
+Your client will be served with Icecast's in-band metadata if it is compatible:
 
 ```bash
-$ mpv http://localhost:8000/foo.mp3
+$ mpv "http://localhost:8000/foo.mp3"
 File tags:
  icy-title: foo
 ```
