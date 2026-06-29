@@ -2,7 +2,6 @@ services:
   gocast:
     build:
       context: ..
-      dockerfile: deployment/Dockerfile
     command: -service.debounce=3s
     volumes:
       - ./config.json:/etc/gocast/config.json
