@@ -135,6 +135,7 @@ func main2(ctx context.Context) {
 	logger.Error("context done", "err", ctx.Err(), "cause", context.Cause(ctx))
 }
 
+// onSignal waits for the [os.Signal] to run a function.
 func onSignal(ctx context.Context, s os.Signal, do func()) error {
 	c := make(chan os.Signal, 1)
 	defer close(c)
@@ -203,10 +204,11 @@ func svcSRTServer(
 	return srv
 }
 
+// srtLogger is an implementation of [srt.Logger].
 type srtLogger struct{ l *log.Logger }
 
-func (l *srtLogger) Listen() <-chan srt.Log     { panic("implementation not needed") }
-func (l *srtLogger) Close()                     { panic("implementation not needed") }
+func (l *srtLogger) Listen() <-chan srt.Log     { panic("unexpected method call") }
+func (l *srtLogger) Close()                     { panic("unexpected method call") }
 func (l *srtLogger) HasTopic(topic string) bool { return strings.HasSuffix(topic, ":error") }
 
 func (l *srtLogger) Print(topic string, _ uint32, _ int, message func() string) {

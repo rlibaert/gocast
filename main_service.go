@@ -67,10 +67,10 @@ func serviceHooks(logger *slog.Logger, set *metrics.Set) domain.ServiceHooks {
 }
 
 // serviceStreamCopy is like [domain.ServiceStreamCopy] but ensures that the
-// bytestream is a valid encoded stream and preserves its packet boundaries.
+// bytestream is a valid encoded stream and preserves its packets' boundaries.
 //
 // The principle behind this highly empirical function is to buffer every
-// reads required to demux a packet before actually writing to the writer.
+// reads required to demux a packet before actually copying to the writer.
 // Also, note that [bufio] is not used: its fixed-size writes would likely
 // cut through packets.
 func serviceStreamCopy(w io.Writer, r io.Reader) (int64, error) {

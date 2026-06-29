@@ -24,6 +24,7 @@ func NewConfigFromJSON(r io.Reader) (*domain.Config, error) {
 	}, nil
 }
 
+// JSONConfigGetter implements [domain.Getter] for *[domain.Config] using a JSON file.
 type JSONConfigGetter string
 
 func (g JSONConfigGetter) Get(context.Context) (*domain.Config, error) {
