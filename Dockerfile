@@ -20,15 +20,15 @@ RUN tar -xJf ffmpeg-8.1.tar.xz && \
 
 RUN ldconfig
 
-# Stage 2: Build app
+# Stage 2: Build snapshot
 FROM builder AS build
 WORKDIR /build
 
 COPY go.sum go.mod vendor/ ./
 COPY . .
-RUN goreleaser build --auto-snapshot --clean
+RUN goreleaser build --clean --snapshot
 
-# Stage 3: Final image
+# Stage 3: Final snapshot image
 FROM gcr.io/distroless/static-debian13:debug-nonroot
 
 COPY --from=build /build/dist/gocast_linux_amd64_v1/gocast /usr/local/bin/

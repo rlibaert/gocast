@@ -25,14 +25,19 @@ on Internet radio streaming.
 
 ## Getting started
 
+Gocast is available as a [container image](https://github.com/rlibaert/gocast/pkgs/container/gocast)
+or a standalone binary on the [releases page](https://github.com/rlibaert/gocast/releases).
+You can also easily build a snapshot image from source:
+
+```bash
+$ docker build -t gocast .
+```
+
 By default, the server listens on ports:
 
 - `8080` for HTTP
 - `8000` for Icecast-style HTTP interface (ICY)
 - `6000/udp` for [Secure Reliable Transport] (SRT)
-
-The latest binary is available on the [releases page](https://github.com/rlibaert/gocast/releases)
-or you can use the [container image](https://github.com/rlibaert/gocast/pkgs/container/gocast):
 
 ```bash
 $ docker run --rm -p 8080:8080 -p 8000:8000 -p 6000/udp:6000/udp ghcr.io/rlibaert/gocast
