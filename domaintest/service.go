@@ -274,3 +274,16 @@ func (m *ServiceMock) PublishTitle(ctx context.Context, pub domain.StreamPub, ti
 	args := m.Called(ctx, pub, title)
 	return args.Error(0)
 }
+
+type ConfigMock struct {
+	mock.Mock
+}
+
+func (m *ConfigMock) Get(context.Context) (*domain.Config, error) {
+	args := m.Called()
+	c, ok := args.Get(0).(*domain.Config)
+	if !ok {
+		panic("invalid mocked argument (unexpected type)")
+	}
+	return c, args.Error(1)
+}

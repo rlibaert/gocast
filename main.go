@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -20,7 +19,6 @@ import (
 	srt "github.com/datarhei/gosrt"
 	"github.com/rlibaert/gocast/domain"
 	"github.com/rlibaert/gocast/observability"
-	protoconfig "github.com/rlibaert/gocast/protos/proto-config"
 	protohttp "github.com/rlibaert/gocast/protos/proto-http"
 	protoicy "github.com/rlibaert/gocast/protos/proto-icy"
 	protosrt "github.com/rlibaert/gocast/protos/proto-srt"
@@ -83,7 +81,16 @@ func main2(ctx context.Context) {
 		io.WriteString(w, metricsInfo) //nolint: errcheck,gosec // equivalent to [fmt.Fprint]
 	})
 
-	svc := domain.NewService(serviceHooks(logger, metrics), serviceStreamCopy, *svcDebounce)
+	svc, err := domain.NewService(
+		JSONConfigGetter(*configFilename),
+		serviceHooks(logger, metrics),
+		serviceStreamCopy,
+		*svcDebounce)
+	if err != nil {
+		logger.Error("failed to create service", "err", err)
+		os.Exit(1)
+	}
+
 	metrics.RegisterMetricsWriter(func(w io.Writer) {
 		for sub, pub := range domain.ServiceStreamsMap(svc) {
 			fmt.Fprintf(w, "%sstreams_map{pub=%q,sub=%q} 1\n", "gocast_", pub, sub)
@@ -97,7 +104,6 @@ func main2(ctx context.Context) {
 	defer wg.Wait()
 
 	var (
-		svcSigh = svcSignalHandler(svc, logger, *configFilename)
 		svcHTTP = svcHTTPServer(svc, logger.With("srv", "http"), *httpAddr, *httpReadHeaderTimeout, metrics)
 		svcICY  = svcICYServer(svc, logger.With("srv", "icy"), *icyAddr, *httpReadHeaderTimeout)
 		svcSRT  = svcSRTServer(svc, logger.With("srv", "srt"), *srtAddr)
@@ -119,7 +125,7 @@ func main2(ctx context.Context) {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
-	wg.Go(func() { cancel(svcSigh(ctx, syscall.SIGHUP)) })
+	wg.Go(func() { cancel(onSignal(ctx, syscall.SIGHUP, func() { _ = svc.Reconfigure(ctx) })) })
 	wg.Go(func() { cancel(svcHTTP.ListenAndServe()) })
 	wg.Go(func() { cancel(svcICY.ListenAndServe()) })
 	wg.Go(func() { cancel(svcSRT.ListenAndServe()) })
@@ -129,52 +135,19 @@ func main2(ctx context.Context) {
 	logger.Error("context done", "err", ctx.Err(), "cause", context.Cause(ctx))
 }
 
-func generateFromJSONFile[T any](ch chan<- *T, filename string) error {
-	f, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+func onSignal(ctx context.Context, s os.Signal, do func()) error {
+	c := make(chan os.Signal, 1)
+	defer close(c)
 
-	var v T
-	err = json.NewDecoder(f).Decode(&v)
-	if err != nil {
-		return err
-	}
-	ch <- &v
+	signal.Notify(c, s)
+	defer signal.Stop(c)
 
-	return nil
-}
-
-func svcSignalHandler(
-	svc domain.Service,
-	logger *slog.Logger,
-	filename string,
-) func(context.Context, ...os.Signal) error {
-	configs := make(chan *protoconfig.Config)
-	protoconfig.ServiceRegisterer{Service: svc}.Register(configs)
-
-	return func(ctx context.Context, signals ...os.Signal) error {
-		if err := generateFromJSONFile(configs, filename); err != nil {
-			return err
-		}
-
-		sigs := make(chan os.Signal, 1)
-		signal.Notify(sigs, signals...)
-
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-
-			case sig := <-sigs:
-				switch err := generateFromJSONFile(configs, filename); err {
-				case nil:
-					logger.Info("config reload ok", "signal", sig)
-				default:
-					logger.Warn("config reload not ok", "signal", sig, "err", err)
-				}
-			}
+	for {
+		select {
+		case <-c:
+			do()
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 }

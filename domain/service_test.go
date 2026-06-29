@@ -7,6 +7,7 @@ import (
 
 	"github.com/rlibaert/gocast/domain"
 	"github.com/rlibaert/gocast/domaintest"
+	"github.com/stretchr/testify/require"
 )
 
 func tbServiceHooks(tb testing.TB) domain.ServiceHooks {
@@ -24,32 +25,48 @@ func tbServiceHooks(tb testing.TB) domain.ServiceHooks {
 	}
 }
 
+func tbConfig(_ testing.TB) *domaintest.ConfigMock {
+	c := &domaintest.ConfigMock{}
+	c.On("Get").Return(&domain.Config{}, nil)
+	return c
+}
+
 func TestServicePublishSubscribe(t *testing.T) {
 	t.Parallel()
-	domaintest.ServiceTester{Service: domain.NewService(tbServiceHooks(t), domain.ServiceStreamCopy, 0)}.
+	svc, err := domain.NewService(tbConfig(t), tbServiceHooks(t), domain.ServiceStreamCopy, 0)
+	require.NoError(t, err)
+	domaintest.ServiceTester{Service: svc}.
 		TestPublishSubscribe(t)
 }
 
 func TestServicePublishTitle(t *testing.T) {
 	t.Parallel()
-	domaintest.ServiceTester{Service: domain.NewService(tbServiceHooks(t), domain.ServiceStreamCopy, 0)}.
+	svc, err := domain.NewService(tbConfig(t), tbServiceHooks(t), domain.ServiceStreamCopy, 0)
+	require.NoError(t, err)
+	domaintest.ServiceTester{Service: svc}.
 		TestPublishTitle(t)
 }
 
 func TestServiceFallback(t *testing.T) {
 	t.Parallel()
-	domaintest.ServiceTester{Service: domain.NewService(tbServiceHooks(t), domain.ServiceStreamCopy, 0)}.
+	svc, err := domain.NewService(tbConfig(t), tbServiceHooks(t), domain.ServiceStreamCopy, 0)
+	require.NoError(t, err)
+	domaintest.ServiceTester{Service: svc}.
 		TestFallback(t)
 }
 
 func TestServiceBackup(t *testing.T) {
 	t.Parallel()
-	domaintest.ServiceTester{Service: domain.NewService(tbServiceHooks(t), domain.ServiceStreamCopy, 0)}.
+	svc, err := domain.NewService(tbConfig(t), tbServiceHooks(t), domain.ServiceStreamCopy, 0)
+	require.NoError(t, err)
+	domaintest.ServiceTester{Service: svc}.
 		TestBackup(t)
 }
 
 func TestServiceCloseOnFallbacksRemoved(t *testing.T) {
 	t.Parallel()
-	domaintest.ServiceTester{Service: domain.NewService(tbServiceHooks(t), domain.ServiceStreamCopy, 0)}.
+	svc, err := domain.NewService(tbConfig(t), tbServiceHooks(t), domain.ServiceStreamCopy, 0)
+	require.NoError(t, err)
+	domaintest.ServiceTester{Service: svc}.
 		TestCloseOnFallbacksRemoved(t)
 }

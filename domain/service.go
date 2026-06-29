@@ -32,6 +32,7 @@ type (
 func (s StreamPub) AsSub() StreamSub { return StreamSub(s) }
 
 type Service interface {
+	Reconfigure(context.Context) error
 	Publish(context.Context, StreamPub, io.Reader) (int64, error)
 	Subscribe(context.Context, StreamSub, io.Writer) (int64, error)
 	PublishTitle(context.Context, StreamPub, string) error
@@ -62,11 +63,13 @@ type ServiceHooks struct {
 func ServiceStreamCopy(w io.Writer, r io.Reader) (int64, error) { return io.Copy(w, r) }
 
 func NewService(
+	config Getter[*Config],
 	hooks ServiceHooks,
 	streamCopy func(io.Writer, io.Reader) (int64, error),
 	debounce time.Duration,
-) Service {
+) (Service, error) {
 	var svc Service = &service{
+		config:     config,
 		hooks:      hooks,
 		streamCopy: streamCopy,
 		wirings:    map[StreamPub][]StreamSub{},
@@ -75,10 +78,17 @@ func NewService(
 	if debounce > 0 {
 		svc = serviceDebounced{svc, debounce}
 	}
-	return svc
+
+	err := svc.Reconfigure(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	return svc, nil
 }
 
 type service struct {
+	config     Getter[*Config]
 	hooks      ServiceHooks
 	streamCopy func(io.Writer, io.Reader) (int64, error)
 
@@ -154,6 +164,17 @@ func (svc *service) resetFallbacks(m map[StreamSub][]StreamPub) {
 	}
 
 	svc.rewire(maps.Keys(svc.fallbacks))
+}
+
+func (svc *service) Reconfigure(ctx context.Context) error {
+	config, err := svc.config.Get(ctx)
+	if err != nil {
+		return err
+	}
+
+	svc.resetFallbacks(config.Fallbacks)
+
+	return nil
 }
 
 func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {

@@ -1,12 +1,12 @@
 package main_test
 
 import (
+	"bytes"
 	_ "embed"
-	"encoding/json"
 	"testing"
 
+	main "github.com/rlibaert/gocast"
 	"github.com/rlibaert/gocast/domain"
-	"github.com/rlibaert/gocast/protos/proto-config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,11 +15,11 @@ import (
 var configJSON []byte
 
 func TestConfigJSON(t *testing.T) {
-	expected := proto.Config{
+	expected := &domain.Config{
 		Fallbacks: map[domain.StreamSub][]domain.StreamPub{},
 	}
 
-	var config proto.Config
-	require.NoError(t, json.Unmarshal(configJSON, &config))
-	assert.Equal(t, expected, config)
+	actual, err := main.NewConfigFromJSON(bytes.NewReader(configJSON))
+	require.NoError(t, err)
+	assert.Equal(t, expected, actual)
 }
