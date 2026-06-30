@@ -3,7 +3,7 @@ module github.com/rlibaert/gocast
 go 1.26.0
 
 require (
-	github.com/VictoriaMetrics/metrics v1.42.0
+	github.com/VictoriaMetrics/metrics v1.44.0
 	github.com/datarhei/gosrt v0.11.0
 	github.com/stretchr/testify v1.11.1
 )
