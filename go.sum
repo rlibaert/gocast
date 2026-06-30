@@ -1,5 +1,7 @@
 github.com/VictoriaMetrics/metrics v1.42.0 h1:t/OGs3BjMUYhxw/h83Z28qAss8DuA4QEVwO4NwJ9hZc=
 github.com/VictoriaMetrics/metrics v1.42.0/go.mod h1:xDM82ULLYCYdFRgQ2JBxi8Uf1+8En1So9YUwlGTOqTc=
+github.com/VictoriaMetrics/metrics v1.44.0 h1:Fr8yqQSV+ZfYaDD/anqk1E8e9YPgfleSleJmAI0M0Tw=
+github.com/VictoriaMetrics/metrics v1.44.0/go.mod h1:xDM82ULLYCYdFRgQ2JBxi8Uf1+8En1So9YUwlGTOqTc=
 github.com/benburkert/openpgp v0.0.0-20160410205803-c2471f86866c h1:8XZeJrs4+ZYhJeJ2aZxADI2tGADS15AzIF8MQ8XAhT4=
 github.com/benburkert/openpgp v0.0.0-20160410205803-c2471f86866c/go.mod h1:x1vxHcL/9AVzuk5HOloOEPrtJY0MaalYr78afXZ+pWI=
 github.com/datarhei/gosrt v0.10.0 h1:dPn+gOo93JTvW2Rfd8Jfz+J/sUbdr+miE9eHUNMoPZY=
