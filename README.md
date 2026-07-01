@@ -26,7 +26,8 @@ on Internet radio streaming.
 ## Getting started
 
 Gocast is available as a [container image](https://github.com/rlibaert/gocast/pkgs/container/gocast)
-or a standalone binary on the [releases page](https://github.com/rlibaert/gocast/releases).
+or a [standalone binary](https://github.com/rlibaert/gocast/releases).
+
 You can also easily build a snapshot image from source:
 
 ```bash
@@ -40,7 +41,7 @@ By default, the server listens on ports:
 - `6000/udp` for [Secure Reliable Transport] (SRT)
 
 ```bash
-$ docker run --rm -p 8080:8080 -p 8000:8000 -p 6000/udp:6000/udp ghcr.io/rlibaert/gocast
+$ docker run --rm -p 8080:8080 -p 8000:8000 -p 6000:6000/udp ghcr.io/rlibaert/gocast
 ```
 
 You can use an Icecast-compatible client to broadcast to the server on port
@@ -51,16 +52,12 @@ $ ffmpeg -i ... "http://localhost:8080/streams/foo.mp3"
 $ ffmpeg -i ... "srt://localhost:6000?streamid=publish:foo.mp3"
 ```
 
-The streams may then be consumed:
+The streams may then be consumed, and your client will even be served with
+Icecast in-band metadata if it is compatible:
 
 ```bash
 $ ffplay -i "http://localhost:8080/streams/foo.mp3"
 $ ffplay -i "srt://localhost:6000?streamid=foo.mp3"
-```
-
-Your client will be served with Icecast's in-band metadata if it is compatible:
-
-```bash
 $ mpv "http://localhost:8000/foo.mp3"
 File tags:
  icy-title: foo
