@@ -1,7 +1,6 @@
 services:
   gocast:
-    build:
-      context: ..
+    build: ..
     command: -service.debounce=3s
     volumes:
       - ./config.json:/etc/gocast/config.json
