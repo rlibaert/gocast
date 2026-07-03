@@ -38,8 +38,8 @@ func (ps *pubsub) Flush() error {
 func (ps *pubsub) Write(p []byte) (int, error) {
 	n, err := ps.chunk.Write(p)
 	if time.Since(ps.start) > ps.dur {
-		err = errors.Join(err, ps.Flush())
 		ps.start = time.Now()
+		err = errors.Join(err, ps.Flush())
 	}
 	return n, err
 }
