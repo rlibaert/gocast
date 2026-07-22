@@ -3,7 +3,8 @@
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:4": {
       "moby": false
-    }
+    },
+    "ghcr.io/devcontainers-extra/features/claude-code:2": {}
   },
   "postCreateCommand": {
     "apt": "sudo apt-get update && sudo apt-get install --no-install-recommends -y libavutil-dev libavcodec-dev libavformat-dev"
