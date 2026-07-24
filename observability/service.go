@@ -42,18 +42,18 @@ func (svc observableService) Reconfigure(ctx context.Context) (err error) { //no
 	return svc.Service.Reconfigure(ctx)
 }
 
-func (svc observableService) Publish(ctx context.Context, s domain.StreamPub, r io.Reader) (_ int64, err error) { //nolint: golines,nonamedreturns // simpler use with defer
+func (svc observableService) Publish(s domain.StreamPub, r io.Reader) (_ int64, err error) { //nolint: golines,nonamedreturns // simpler use with defer
 	const fname = "Service.Publish"
 	defer svc.logs(fname).in(s).out(time.Now(), &err)
 	defer svc.metrics[fname].in().out()
-	return svc.Service.Publish(ctx, s, r)
+	return svc.Service.Publish(s, r)
 }
 
-func (svc observableService) Subscribe(ctx context.Context, s domain.StreamSub, w io.Writer) (_ int64, err error) { //nolint: golines,nonamedreturns // simpler use with defer
+func (svc observableService) Subscribe(s domain.StreamSub, w io.Writer) (_ int64, err error) { //nolint: golines,nonamedreturns // simpler use with defer
 	const fname = "Service.Subscribe"
 	defer svc.logs(fname).in(s).out(time.Now(), &err)
 	defer svc.metrics[fname].in().out()
-	return svc.Service.Subscribe(ctx, s, w)
+	return svc.Service.Subscribe(s, w)
 }
 
 func (svc observableService) PublishTitle(ctx context.Context, s domain.StreamPub, title string) (err error) { //nolint: golines,nonamedreturns // simpler use with defer

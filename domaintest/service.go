@@ -54,7 +54,7 @@ func (st ServiceTester) TestPublishSubscribe(t *testing.T) {
 			ctx, cancel := context.WithDeadline(t.Context(), dlPubStops)
 			defer cancel()
 
-			n, err := st.Service.Publish(ctx, pub, pubReader(wgPubsPublishing.Done, pub))
+			n, err := st.Service.Publish(pub, pubReader(wgPubsPublishing.Done, pub))
 			require.ErrorIs(t, err, context.DeadlineExceeded)
 			assert.Positive(t, n)
 		})
@@ -66,7 +66,7 @@ func (st ServiceTester) TestPublishSubscribe(t *testing.T) {
 			ctx := t.Context()
 
 			re := regexp.MustCompile(`^(` + string(sub) + `)*$`)
-			n, err := st.Service.Subscribe(ctx, sub, rwFunc(func(p []byte) (int, error) {
+			n, err := st.Service.Subscribe(sub, rwFunc(func(p []byte) (int, error) {
 				assert.True(t, re.Match(p), string(p), "not "+re.String())
 				return len(p), nil
 			}))
@@ -93,7 +93,7 @@ func (st ServiceTester) TestFallback(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), dlFooStops)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "foo", pubReader(wgPubsPublishing.Done, "foo"))
+		n, err := st.Service.Publish("foo", pubReader(wgPubsPublishing.Done, "foo"))
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.Positive(t, n)
 	})
@@ -102,7 +102,7 @@ func (st ServiceTester) TestFallback(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), dlBarStops)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "bar", pubReader(wgPubsPublishing.Done, "bar"))
+		n, err := st.Service.Publish("bar", pubReader(wgPubsPublishing.Done, "bar"))
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.Positive(t, n)
 	})
@@ -114,7 +114,7 @@ func (st ServiceTester) TestFallback(t *testing.T) {
 		re1 := regexp.MustCompile(`^(foo)+(bar)*$`) // foo & foo -> bar transition
 		re2 := regexp.MustCompile(`^(bar)+(foo)*$`) // bar & bar -> foo transition (maybe, when the test concludes)
 		re := re1
-		n, err := st.Service.Subscribe(ctx, "toto", rwFunc(func(p []byte) (int, error) {
+		n, err := st.Service.Subscribe("toto", rwFunc(func(p []byte) (int, error) {
 			if re == re1 && re2.Match(p) {
 				re = re2
 			}
@@ -144,7 +144,7 @@ func (st ServiceTester) TestBackup(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), dlFooStops)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "foo", pubReader(nil, "foo"))
+		n, err := st.Service.Publish("foo", pubReader(nil, "foo"))
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.Positive(t, n)
 	})
@@ -155,7 +155,7 @@ func (st ServiceTester) TestBackup(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), dlBarStops)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "bar", pubReader(wgPubsPublishing.Done, "bar"))
+		n, err := st.Service.Publish("bar", pubReader(wgPubsPublishing.Done, "bar"))
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.Positive(t, n)
 	})
@@ -167,7 +167,7 @@ func (st ServiceTester) TestBackup(t *testing.T) {
 		re1 := regexp.MustCompile(`^(bar)+(foo)*$`) // bar & bar -> foo transition
 		re2 := regexp.MustCompile(`^(foo)+(bar)*$`) // foo & foo -> bar transition (maybe, when the test concludes)
 		re := re1
-		n, err := st.Service.Subscribe(ctx, "toto", rwFunc(func(p []byte) (int, error) {
+		n, err := st.Service.Subscribe("toto", rwFunc(func(p []byte) (int, error) {
 			if re == re1 && re2.Match(p) {
 				re = re2
 			}
@@ -194,7 +194,7 @@ func (st ServiceTester) TestPublishTitle(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), dlFoo)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "foo", pubReader(wgPubsPublishing.Done, "foo"))
+		n, err := st.Service.Publish("foo", pubReader(wgPubsPublishing.Done, "foo"))
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.Positive(t, n)
 	})
@@ -234,20 +234,20 @@ func (st ServiceTester) TestCloseOnFallbacksRemoved(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), dlFoo)
 		defer cancel()
 
-		n, err := st.Service.Publish(ctx, "foo", pubReader(wgPubsPublishing.Done, "foo"))
+		n, err := st.Service.Publish("foo", pubReader(wgPubsPublishing.Done, "foo"))
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.Positive(t, n)
 	})
 	wgPubsPublishing.Wait()
 
 	t.Run("toto gets closed", func(t *testing.T) {
-		n, err := st.Service.Subscribe(t.Context(), "toto", io.Discard)
+		n, err := st.Service.Subscribe("toto", io.Discard)
 		require.NoError(t, err)
 		assert.Positive(t, n)
 	})
 
 	t.Run("foo still opened", func(t *testing.T) {
-		n, err := st.Service.Subscribe(t.Context(), "foo", io.Discard)
+		n, err := st.Service.Subscribe("foo", io.Discard)
 		require.NoError(t, err)
 		assert.Positive(t, n)
 	})
@@ -260,13 +260,13 @@ type ServiceMock struct {
 
 var _ domain.Service = (*ServiceMock)(nil)
 
-func (m *ServiceMock) Publish(ctx context.Context, pub domain.StreamPub, r io.Reader) (int64, error) {
-	args := m.Called(ctx, pub, r)
+func (m *ServiceMock) Publish(pub domain.StreamPub, r io.Reader) (int64, error) {
+	args := m.Called(pub, r)
 	return int64(args.Int(0)), args.Error(1)
 }
 
-func (m *ServiceMock) Subscribe(ctx context.Context, sub domain.StreamSub, w io.Writer) (int64, error) {
-	args := m.Called(ctx, sub, w)
+func (m *ServiceMock) Subscribe(sub domain.StreamSub, w io.Writer) (int64, error) {
+	args := m.Called(sub, w)
 	return int64(args.Int(0)), args.Error(1)
 }
 

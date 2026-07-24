@@ -30,14 +30,12 @@ func (reg ServiceRegisterer) Register(s *srt.Server) {
 	}
 	s.HandlePublish = func(conn srt.Conn) {
 		defer conn.Close()
-		ctx := reg.BaseContext()
 		stream := strings.TrimPrefix(conn.StreamId(), "publish:")
-		_, _ = reg.Service.Publish(ctx, domain.StreamPub(stream), conn)
+		_, _ = reg.Service.Publish(domain.StreamPub(stream), conn)
 	}
 	s.HandleSubscribe = func(conn srt.Conn) {
 		defer conn.Close()
-		ctx := reg.BaseContext()
 		stream := conn.StreamId()
-		_, _ = reg.Service.Subscribe(ctx, domain.StreamSub(stream), conn)
+		_, _ = reg.Service.Subscribe(domain.StreamSub(stream), conn)
 	}
 }

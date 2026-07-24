@@ -1,7 +1,6 @@
 package domain_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -12,12 +11,12 @@ import (
 
 func tbServiceHooks(tb testing.TB) domain.ServiceHooks {
 	return domain.ServiceHooks{
-		PublishStartStop: func(_ context.Context, s domain.StreamPub) func() {
+		PublishStartStop: func(s domain.StreamPub) func() {
 			t := time.Now()
 			tb.Log("PublishStart", s)
 			return func() { tb.Log("PublishStop", s, time.Since(t)) }
 		},
-		SubscribeStartStop: func(_ context.Context, s domain.StreamSub) func() {
+		SubscribeStartStop: func(s domain.StreamSub) func() {
 			t := time.Now()
 			tb.Log("SubscribeStart", s)
 			return func() { tb.Log("SubscribeStop", s, time.Since(t)) }
