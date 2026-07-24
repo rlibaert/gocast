@@ -133,6 +133,10 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 		if i := slices.Index(ps.subs, ch); i != -1 {
 			ps.subs[i], ps.subs[len(ps.subs)-1] = ps.subs[len(ps.subs)-1], nil
 			ps.subs = ps.subs[:len(ps.subs)-1]
+			close(ch)
+		}
+		for rb := range ch {
+			ps.unref(rb)
 		}
 	}()
 
