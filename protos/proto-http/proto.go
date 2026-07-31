@@ -33,7 +33,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "audio/mpeg")
 
 		stream := r.PathValue("stream")
-		_, err := reg.Service.Subscribe(domain.StreamSub(stream), w)
+		_, err := reg.Service.Subscribe(r.Context(), domain.StreamSub(stream), w)
 		switch {
 		case errors.Is(err, domain.ErrStreamNotFound):
 			httpStatusTextError(w, http.StatusNotFound)

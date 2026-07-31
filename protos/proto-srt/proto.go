@@ -36,6 +36,6 @@ func (reg ServiceRegisterer) Register(s *srt.Server) {
 	s.HandleSubscribe = func(conn srt.Conn) {
 		defer conn.Close()
 		stream := conn.StreamId()
-		_, _ = reg.Service.Subscribe(domain.StreamSub(stream), conn)
+		_, _ = reg.Service.Subscribe(reg.BaseContext(), domain.StreamSub(stream), conn)
 	}
 }

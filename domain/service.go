@@ -34,7 +34,7 @@ func (s StreamPub) AsSub() StreamSub { return StreamSub(s) }
 type Service interface {
 	Reconfigure(context.Context) error
 	Publish(StreamPub, io.Reader) (int64, error)
-	Subscribe(StreamSub, io.Writer) (int64, error)
+	Subscribe(context.Context, StreamSub, io.Writer) (int64, error)
 	PublishTitle(context.Context, StreamPub, string) error
 
 	resetFallbacks(map[StreamSub][]StreamPub)
@@ -221,14 +221,14 @@ func (svc *service) streamPubWriter(s StreamPub) io.Writer {
 	})
 }
 
-func (svc *service) Subscribe(s StreamSub, w io.Writer) (int64, error) {
+func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (int64, error) {
 	ps, loaded := svc.streamsPubsub.Load(s)
 	if !loaded {
 		return 0, ErrStreamNotFound
 	}
 
 	defer svc.hooks.SubscribeStartStop(s)()
-	return ps.(internal.Pubsub).WriteTo(w) //nolint: errcheck // always valid
+	return ps.(internal.Pubsub).WriteToContext(ctx, w) //nolint: errcheck // always valid
 }
 
 func (svc *service) PublishTitle(_ context.Context, s StreamPub, title string) error {

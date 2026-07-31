@@ -2,6 +2,7 @@ package domain
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"sync"
@@ -49,8 +50,8 @@ func (ps *pubsub) Close() error {
 	return errors.Join(ps.Flush(), ps.Pubsub.Close())
 }
 
-func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
+func (ps *pubsub) WriteToContext(ctx context.Context, w io.Writer) (int64, error) {
 	ps.readers.Add(1)
 	defer ps.readers.Done()
-	return ps.Pubsub.WriteTo(w)
+	return ps.Pubsub.WriteToContext(ctx, w)
 }

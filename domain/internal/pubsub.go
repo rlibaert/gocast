@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"errors"
 	"io"
 	"slices"
@@ -9,9 +10,15 @@ import (
 )
 
 // Pubsub is a publisher-subcribers communication interface.
+//
+// The publisher uses the [io.WriteCloser] interface to write data to subscribers and signal end-of-stream.
+//
+// Subscribers uses a function that works similarly to [io.WriterTo] to request the data to be copied for them,
+// the difference being that it also takes a [context.Context] to provide some cancellation,
+// which can only take effect when the copy is awaiting for more data to write.
 type Pubsub interface {
-	io.WriteCloser // publisher
-	io.WriterTo    // subscribers
+	io.WriteCloser
+	WriteToContext(context.Context, io.Writer) (int64, error)
 }
 
 var errPubsubClosed = errors.New("pubsub: closed")
@@ -110,7 +117,7 @@ func (ps *pubsub) Close() error {
 	return nil
 }
 
-func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
+func (ps *pubsub) WriteToContext(ctx context.Context, w io.Writer) (int64, error) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
@@ -144,14 +151,22 @@ func (ps *pubsub) WriteTo(w io.Writer) (int64, error) {
 	defer ps.mu.Lock()
 
 	n := int64(0)
-	for rb := range ch {
-		wn, werr := w.Write(rb.b)
-		ps.unref(rb)
-		n += int64(wn)
-		if werr != nil {
-			return n, werr
+	for {
+		select {
+		case rb, ok := <-ch:
+			if !ok {
+				return n, nil
+			}
+
+			wn, werr := w.Write(rb.b)
+			ps.unref(rb)
+			n += int64(wn)
+			if werr != nil {
+				return n, werr
+			}
+
+		case <-ctx.Done():
+			return n, ctx.Err()
 		}
 	}
-
-	return n, nil
 }
