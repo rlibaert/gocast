@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -32,17 +31,17 @@ func serviceHooks(logger *slog.Logger, set *metrics.Set) domain.ServiceHooks {
 	subsCounters := sync.Map{}
 
 	return domain.ServiceHooks{
-		PublishStartStop: func(ctx context.Context, s domain.StreamPub) func() {
+		PublishStartStop: func(s domain.StreamPub) func() {
 			start := time.Now()
-			logger.InfoContext(ctx, "publishing", "stream", s)
+			logger.Info("publishing", "stream", s)
 			countersInc(pubCounters)
 			return func() {
 				dur := time.Since(start)
 				countersDec(pubCounters, dur)
-				logger.InfoContext(ctx, "unpublished", "stream", s, "dur_ms", dur.Milliseconds())
+				logger.Info("unpublished", "stream", s, "dur_ms", dur.Milliseconds())
 			}
 		},
-		SubscribeStartStop: func(ctx context.Context, s domain.StreamSub) func() {
+		SubscribeStartStop: func(s domain.StreamSub) func() {
 			v, ok := subsCounters.Load(s)
 			if !ok {
 				labels := fmt.Sprintf("{sub=%q}", s)
@@ -55,12 +54,12 @@ func serviceHooks(logger *slog.Logger, set *metrics.Set) domain.ServiceHooks {
 			subCounters := v.(counters) //nolint: errcheck // always valid
 
 			start := time.Now()
-			logger.InfoContext(ctx, "subscribing", "stream", s)
+			logger.Info("subscribing", "stream", s)
 			countersInc(subCounters)
 			return func() {
 				dur := time.Since(start)
 				countersDec(subCounters, dur)
-				logger.InfoContext(ctx, "unsubscribed", "stream", s, "dur_ms", dur.Milliseconds())
+				logger.Info("unsubscribed", "stream", s, "dur_ms", dur.Milliseconds())
 			}
 		},
 	}

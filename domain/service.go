@@ -33,8 +33,8 @@ func (s StreamPub) AsSub() StreamSub { return StreamSub(s) }
 
 type Service interface {
 	Reconfigure(context.Context) error
-	Publish(context.Context, StreamPub, io.Reader) (int64, error)
-	Subscribe(context.Context, StreamSub, io.Writer) (int64, error)
+	Publish(StreamPub, io.Reader) (int64, error)
+	Subscribe(StreamSub, io.Writer) (int64, error)
 	PublishTitle(context.Context, StreamPub, string) error
 
 	resetFallbacks(map[StreamSub][]StreamPub)
@@ -55,8 +55,8 @@ func ServiceStreamsMap(svc Service) map[StreamSub]StreamPub {
 }
 
 type ServiceHooks struct {
-	PublishStartStop   func(ctx context.Context, s StreamPub) (stop func())
-	SubscribeStartStop func(ctx context.Context, s StreamSub) (stop func())
+	PublishStartStop   func(StreamPub) (stop func())
+	SubscribeStartStop func(StreamSub) (stop func())
 }
 
 // ServiceStreamCopy is the default function for copying stream data.
@@ -177,7 +177,7 @@ func (svc *service) Reconfigure(ctx context.Context) error {
 	return nil
 }
 
-func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
+func (svc *service) Publish(s StreamPub, r io.Reader) (int64, error) {
 	svc.mu.Lock()
 	defer svc.mu.Unlock()
 
@@ -202,8 +202,8 @@ func (svc *service) Publish(ctx context.Context, s StreamPub, r io.Reader) (int6
 	svc.mu.Unlock()
 	defer svc.mu.Lock()
 
-	defer svc.hooks.PublishStartStop(ctx, s)()
-	return svc.streamCopy(internal.WriterContext(ctx, svc.streamPubWriter(s)), r)
+	defer svc.hooks.PublishStartStop(s)()
+	return svc.streamCopy(svc.streamPubWriter(s), r)
 }
 
 // streamPubWriter returns an [io.Writer] that writes every [StreamSub] mapped to [StreamPub].
@@ -221,14 +221,14 @@ func (svc *service) streamPubWriter(s StreamPub) io.Writer {
 	})
 }
 
-func (svc *service) Subscribe(ctx context.Context, s StreamSub, w io.Writer) (int64, error) {
+func (svc *service) Subscribe(s StreamSub, w io.Writer) (int64, error) {
 	ps, loaded := svc.streamsPubsub.Load(s)
 	if !loaded {
 		return 0, ErrStreamNotFound
 	}
 
-	defer svc.hooks.SubscribeStartStop(ctx, s)()
-	return ps.(internal.Pubsub).WriteTo(internal.WriterContext(ctx, w)) //nolint: errcheck // always valid
+	defer svc.hooks.SubscribeStartStop(s)()
+	return ps.(internal.Pubsub).WriteTo(w) //nolint: errcheck // always valid
 }
 
 func (svc *service) PublishTitle(_ context.Context, s StreamPub, title string) error {
@@ -277,10 +277,10 @@ type serviceDebounced struct {
 	duration time.Duration
 }
 
-func (svc serviceDebounced) Publish(ctx context.Context, s StreamPub, r io.Reader) (int64, error) {
-	n, err, r, ok := svc.debounce(ctx, r, svc.duration)
+func (svc serviceDebounced) Publish(s StreamPub, r io.Reader) (int64, error) {
+	n, err, r, ok := svc.debounce(r, svc.duration)
 	if ok {
-		return svc.Service.Publish(ctx, s, r)
+		return svc.Service.Publish(s, r)
 	}
 	return n, err
 }
@@ -288,14 +288,17 @@ func (svc serviceDebounced) Publish(ctx context.Context, s StreamPub, r io.Reade
 // debounce ensures a reader can be read for a minimum duration.
 // It actually buffers the reader and returns the number of bytes read & error,
 // a replacement for the altered reader and a success flag.
-func (serviceDebounced) debounce(parent context.Context, r io.Reader, d time.Duration) (int64, error, io.Reader, bool) { //nolint:revive,staticcheck,golines // not an idiomatic error
+func (serviceDebounced) debounce(r io.Reader, d time.Duration) (int64, error, io.Reader, bool) { //nolint:revive,staticcheck,golines // not an idiomatic error
 	errStop := struct{ error }{}
-
-	ctx, cancel := context.WithTimeoutCause(parent, d, errStop)
-	defer cancel()
-
+	deadline := time.Now().Add(d)
 	b := bytes.NewBuffer(nil)
-	n, err := b.ReadFrom(internal.ReaderContext(ctx, r))
 
-	return n, err, io.MultiReader(b, r), errors.Is(context.Cause(ctx), errStop)
+	n, err := b.ReadFrom(internal.ReaderFunc(func(p []byte) (int, error) {
+		if time.Now().After(deadline) {
+			return 0, errStop
+		}
+		return r.Read(p)
+	}))
+
+	return n, err, io.MultiReader(b, r), errors.Is(err, errStop)
 }

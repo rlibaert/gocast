@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -38,7 +37,7 @@ func (reg ServiceRegisterer) sourceStream(w http.ResponseWriter, r *http.Request
 	defer conn.Close()
 
 	stream := r.PathValue("stream")
-	_, _ = reg.Service.Publish(r.Context(), domain.StreamPub(stream), buf)
+	_, _ = reg.Service.Publish(domain.StreamPub(stream), buf)
 }
 
 func (reg ServiceRegisterer) putStream(w http.ResponseWriter, r *http.Request) {
@@ -54,11 +53,10 @@ func (reg ServiceRegisterer) putStream(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	stream := r.PathValue("stream")
-	_, _ = reg.Service.Publish(r.Context(), domain.StreamPub(stream), buf)
+	_, _ = reg.Service.Publish(domain.StreamPub(stream), buf)
 }
 
 func (reg ServiceRegisterer) getStream(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	stream := r.PathValue("stream")
 
 	var writer io.Writer = w
@@ -81,11 +79,11 @@ func (reg ServiceRegisterer) getStream(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "audio/mpeg")
 
-	_, err := reg.Service.Subscribe(ctx, domain.StreamSub(stream), writer)
+	_, err := reg.Service.Subscribe(domain.StreamSub(stream), writer)
 	switch {
-	case errors.Is(err, nil), errors.Is(err, context.Canceled):
 	case errors.Is(err, domain.ErrStreamNotFound):
 		httpStatusTextError(w, http.StatusNotFound)
+	case errors.Is(err, nil), r.Context().Err() != nil:
 	default:
 		httpStatusTextError(w, http.StatusInternalServerError)
 	}
@@ -119,9 +117,9 @@ func (reg ServiceRegisterer) getAdminMetadataUpdinfo(w http.ResponseWriter, r *h
 	stream := strings.TrimPrefix(q.Get("mount"), "/")
 	err := reg.Service.PublishTitle(ctx, domain.StreamPub(stream), title)
 	switch {
-	case errors.Is(err, nil), errors.Is(err, context.Canceled):
 	case errors.Is(err, domain.ErrStreamNotFound):
 		httpStatusTextError(w, http.StatusNotFound)
+	case errors.Is(err, nil), r.Context().Err() != nil:
 	default:
 		httpStatusTextError(w, http.StatusInternalServerError)
 	}

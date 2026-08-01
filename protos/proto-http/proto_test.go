@@ -27,7 +27,7 @@ func TestServiceRegisterer(t *testing.T) {
 			io.NopCloser(strings.NewReader("testbody")),
 		)
 
-		svc.On("Publish", req.Context(), domain.StreamPub("foo"), req.Body).
+		svc.On("Publish", domain.StreamPub("foo"), req.Body).
 			Return(0, nil).Once()
 		mux.ServeHTTP(rec, req)
 		svc.AssertExpectations(t)
@@ -43,7 +43,7 @@ func TestServiceRegisterer(t *testing.T) {
 			io.NopCloser(strings.NewReader("testbody")),
 		)
 
-		svc.On("Publish", req.Context(), domain.StreamPub("foo"), req.Body).
+		svc.On("Publish", domain.StreamPub("foo"), req.Body).
 			Return(0, domain.ErrStreamExists).Once()
 		mux.ServeHTTP(rec, req)
 		svc.AssertExpectations(t)
@@ -59,7 +59,7 @@ func TestServiceRegisterer(t *testing.T) {
 			http.NoBody,
 		)
 
-		svc.On("Subscribe", req.Context(), domain.StreamSub("foo"), rec).
+		svc.On("Subscribe", domain.StreamSub("foo"), rec).
 			Return(0, nil).Once()
 		mux.ServeHTTP(rec, req)
 		svc.AssertExpectations(t)
@@ -76,7 +76,7 @@ func TestServiceRegisterer(t *testing.T) {
 			http.NoBody,
 		)
 
-		svc.On("Subscribe", req.Context(), domain.StreamSub("foo"), rec).
+		svc.On("Subscribe", domain.StreamSub("foo"), rec).
 			Return(0, domain.ErrStreamNotFound).Once()
 		mux.ServeHTTP(rec, req)
 		svc.AssertExpectations(t)
