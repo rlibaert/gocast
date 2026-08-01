@@ -23,7 +23,7 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		switch {
 		case errors.Is(err, domain.ErrStreamExists):
 			httpStatusTextError(w, http.StatusConflict)
-		case errors.Is(err, nil):
+		case errors.Is(err, nil), r.Context().Err() != nil:
 		default:
 			httpStatusTextError(w, http.StatusInternalServerError)
 		}
@@ -48,9 +48,9 @@ func (reg ServiceRegisterer) Register(mux *http.ServeMux) {
 		title := r.URL.Query().Get("title")
 		err := reg.Service.PublishTitle(r.Context(), domain.StreamPub(stream), title)
 		switch {
-		case errors.Is(err, nil):
 		case errors.Is(err, domain.ErrStreamNotFound):
 			httpStatusTextError(w, http.StatusNotFound)
+		case errors.Is(err, nil), r.Context().Err() != nil:
 		default:
 			httpStatusTextError(w, http.StatusInternalServerError)
 		}

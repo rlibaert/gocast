@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -118,9 +117,9 @@ func (reg ServiceRegisterer) getAdminMetadataUpdinfo(w http.ResponseWriter, r *h
 	stream := strings.TrimPrefix(q.Get("mount"), "/")
 	err := reg.Service.PublishTitle(ctx, domain.StreamPub(stream), title)
 	switch {
-	case errors.Is(err, nil), errors.Is(err, context.Canceled):
 	case errors.Is(err, domain.ErrStreamNotFound):
 		httpStatusTextError(w, http.StatusNotFound)
+	case errors.Is(err, nil), r.Context().Err() != nil:
 	default:
 		httpStatusTextError(w, http.StatusInternalServerError)
 	}
