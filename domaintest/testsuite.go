@@ -42,11 +42,11 @@ type ServiceSuite struct {
 	// NewService builds a fresh [domain.Service] before each test.
 	NewService func(tb testing.TB) domain.Service
 
-	Service domain.Service
+	service domain.Service
 }
 
 func (s *ServiceSuite) SetupTest() {
-	s.Service = s.NewService(s.T())
+	s.service = s.NewService(s.T())
 }
 
 // baseDur is duration from which all relative deadlines are calculated.
@@ -65,7 +65,7 @@ func (s *ServiceSuite) TestPublishSubscribe() {
 	for _, pub := range []domain.StreamPub{"foo", "bar"} {
 		wgPubsPublishing.Add(1)
 		wg.Go(func() {
-			n, err := s.Service.Publish(pub, pubReader(wgPubsPublishing.Done, pub, dlPubStops))
+			n, err := s.service.Publish(pub, pubReader(wgPubsPublishing.Done, pub, dlPubStops))
 			s.Require().ErrorIs(err, context.DeadlineExceeded)
 			s.Positive(n)
 		})
@@ -75,7 +75,7 @@ func (s *ServiceSuite) TestPublishSubscribe() {
 	for _, sub := range []domain.StreamSub{"foo", "bar", "foo", "bar"} {
 		wg.Go(func() {
 			re := regexp.MustCompile(`^(` + string(sub) + `)*$`)
-			n, err := s.Service.Subscribe(sub, rwFunc(func(p []byte) (int, error) {
+			n, err := s.service.Subscribe(sub, rwFunc(func(p []byte) (int, error) {
 				s.True(re.Match(p), string(p), "not "+re.String())
 				return len(p), nil
 			}))
@@ -89,7 +89,7 @@ func (s *ServiceSuite) TestFallback() {
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
-	domain.ServiceResetFallbacks(s.Service, map[domain.StreamSub][]domain.StreamPub{"toto": {"foo", "bar"}})
+	domain.ServiceResetFallbacks(s.service, map[domain.StreamSub][]domain.StreamPub{"toto": {"foo", "bar"}})
 
 	// deadlines
 	var (
@@ -100,13 +100,13 @@ func (s *ServiceSuite) TestFallback() {
 	wgPubsPublishing := sync.WaitGroup{}
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
-		n, err := s.Service.Publish("foo", pubReader(wgPubsPublishing.Done, "foo", dlFooStops))
+		n, err := s.service.Publish("foo", pubReader(wgPubsPublishing.Done, "foo", dlFooStops))
 		s.Require().ErrorIs(err, context.DeadlineExceeded)
 		s.Positive(n)
 	})
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
-		n, err := s.Service.Publish("bar", pubReader(wgPubsPublishing.Done, "bar", dlBarStops))
+		n, err := s.service.Publish("bar", pubReader(wgPubsPublishing.Done, "bar", dlBarStops))
 		s.Require().ErrorIs(err, context.DeadlineExceeded)
 		s.Positive(n)
 	})
@@ -116,7 +116,7 @@ func (s *ServiceSuite) TestFallback() {
 		re1 := regexp.MustCompile(`^(foo)+(bar)*$`) // foo & foo -> bar transition
 		re2 := regexp.MustCompile(`^(bar)+(foo)*$`) // bar & bar -> foo transition (maybe, when the test concludes)
 		re := re1
-		n, err := s.Service.Subscribe("toto", rwFunc(func(p []byte) (int, error) {
+		n, err := s.service.Subscribe("toto", rwFunc(func(p []byte) (int, error) {
 			if re == re1 && re2.Match(p) {
 				re = re2
 			}
@@ -133,7 +133,7 @@ func (s *ServiceSuite) TestBackup() {
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
-	domain.ServiceResetFallbacks(s.Service, map[domain.StreamSub][]domain.StreamPub{"toto": {"foo", "bar"}})
+	domain.ServiceResetFallbacks(s.service, map[domain.StreamSub][]domain.StreamPub{"toto": {"foo", "bar"}})
 
 	// deadlines
 	var (
@@ -144,7 +144,7 @@ func (s *ServiceSuite) TestBackup() {
 
 	wg.Go(func() {
 		time.Sleep(time.Until(dlFooStarts))
-		n, err := s.Service.Publish("foo", pubReader(nil, "foo", dlFooStops))
+		n, err := s.service.Publish("foo", pubReader(nil, "foo", dlFooStops))
 		s.Require().ErrorIs(err, context.DeadlineExceeded)
 		s.Positive(n)
 	})
@@ -152,7 +152,7 @@ func (s *ServiceSuite) TestBackup() {
 	wgPubsPublishing := sync.WaitGroup{}
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
-		n, err := s.Service.Publish("bar", pubReader(wgPubsPublishing.Done, "bar", dlBarStops))
+		n, err := s.service.Publish("bar", pubReader(wgPubsPublishing.Done, "bar", dlBarStops))
 		s.Require().ErrorIs(err, context.DeadlineExceeded)
 		s.Positive(n)
 	})
@@ -162,7 +162,7 @@ func (s *ServiceSuite) TestBackup() {
 		re1 := regexp.MustCompile(`^(bar)+(foo)*$`) // bar & bar -> foo transition
 		re2 := regexp.MustCompile(`^(foo)+(bar)*$`) // foo & foo -> bar transition (maybe, when the test concludes)
 		re := re1
-		n, err := s.Service.Subscribe("toto", rwFunc(func(p []byte) (int, error) {
+		n, err := s.service.Subscribe("toto", rwFunc(func(p []byte) (int, error) {
 			if re == re1 && re2.Match(p) {
 				re = re2
 			}
@@ -189,23 +189,23 @@ func (s *ServiceSuite) TestPublishTitle() {
 	wgPubsPublishing := sync.WaitGroup{}
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
-		n, err := s.Service.Publish("foo", pubReader(wgPubsPublishing.Done, "foo", dlFoo))
+		n, err := s.service.Publish("foo", pubReader(wgPubsPublishing.Done, "foo", dlFoo))
 		s.Require().ErrorIs(err, context.DeadlineExceeded)
 		s.Positive(n)
 	})
 	wgPubsPublishing.Wait()
 
-	domain.ServiceResetFallbacks(s.Service, map[domain.StreamSub][]domain.StreamPub{
+	domain.ServiceResetFallbacks(s.service, map[domain.StreamSub][]domain.StreamPub{
 		"toto": {"foo"},
 		"tata": {"foo"},
 	})
 
 	const title = "lorem ipsum"
-	s.Require().NoError(s.Service.PublishTitle(t.Context(), "foo", title))
-	s.Equal(title, *cmp.Or(domain.ServiceStreamSubTitle(s.Service, "foo"), new("<nil>")))
-	s.Equal(title, *cmp.Or(domain.ServiceStreamSubTitle(s.Service, "toto"), new("<nil>")))
-	s.Equal(title, *cmp.Or(domain.ServiceStreamSubTitle(s.Service, "tata"), new("<nil>")))
-	s.Require().ErrorIs(s.Service.PublishTitle(t.Context(), "bar", ""), domain.ErrStreamNotFound)
+	s.Require().NoError(s.service.PublishTitle(t.Context(), "foo", title))
+	s.Equal(title, *cmp.Or(domain.ServiceStreamSubTitle(s.service, "foo"), new("<nil>")))
+	s.Equal(title, *cmp.Or(domain.ServiceStreamSubTitle(s.service, "toto"), new("<nil>")))
+	s.Equal(title, *cmp.Or(domain.ServiceStreamSubTitle(s.service, "tata"), new("<nil>")))
+	s.Require().ErrorIs(s.service.PublishTitle(t.Context(), "bar", ""), domain.ErrStreamNotFound)
 }
 
 func (s *ServiceSuite) TestCloseOnFallbacksRemoved() {
@@ -218,28 +218,28 @@ func (s *ServiceSuite) TestCloseOnFallbacksRemoved() {
 	)
 
 	wg.Go(func() {
-		domain.ServiceResetFallbacks(s.Service, map[domain.StreamSub][]domain.StreamPub{"toto": {"foo"}})
+		domain.ServiceResetFallbacks(s.service, map[domain.StreamSub][]domain.StreamPub{"toto": {"foo"}})
 		time.Sleep(time.Until(dlReset))
-		domain.ServiceResetFallbacks(s.Service, map[domain.StreamSub][]domain.StreamPub{})
+		domain.ServiceResetFallbacks(s.service, map[domain.StreamSub][]domain.StreamPub{})
 	})
 
 	wgPubsPublishing := sync.WaitGroup{}
 	wgPubsPublishing.Add(1)
 	wg.Go(func() {
-		n, err := s.Service.Publish("foo", pubReader(wgPubsPublishing.Done, "foo", dlFoo))
+		n, err := s.service.Publish("foo", pubReader(wgPubsPublishing.Done, "foo", dlFoo))
 		s.Require().ErrorIs(err, context.DeadlineExceeded)
 		s.Positive(n)
 	})
 	wgPubsPublishing.Wait()
 
 	s.Run("toto gets closed", func() {
-		n, err := s.Service.Subscribe("toto", io.Discard)
+		n, err := s.service.Subscribe("toto", io.Discard)
 		s.Require().NoError(err)
 		s.Positive(n)
 	})
 
 	s.Run("foo still opened", func() {
-		n, err := s.Service.Subscribe("foo", io.Discard)
+		n, err := s.service.Subscribe("foo", io.Discard)
 		s.Require().NoError(err)
 		s.Positive(n)
 	})
