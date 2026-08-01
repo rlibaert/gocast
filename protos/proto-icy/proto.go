@@ -80,7 +80,7 @@ func (reg ServiceRegisterer) getStream(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "audio/mpeg")
 
-	_, err := reg.Service.Subscribe(r.Context(), domain.StreamSub(stream), writer)
+	_, err := reg.Service.Subscribe(domain.StreamSub(stream), writer)
 	switch {
 	case errors.Is(err, domain.ErrStreamNotFound):
 		httpStatusTextError(w, http.StatusNotFound)

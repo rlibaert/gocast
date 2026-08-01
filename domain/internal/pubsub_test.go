@@ -1,7 +1,6 @@
 package internal_test
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -20,7 +19,7 @@ func TestPubsub_data_copy(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Go(func() {
 		b := strings.Builder{}
-		n, err := ps.WriteToContext(t.Context(), &b)
+		n, err := ps.WriteTo(&b)
 		require.NoError(t, err)
 		assert.Equal(t, int64(9), n)
 		assert.Equal(t, "foobarbaz", b.String())
@@ -36,24 +35,6 @@ func TestPubsub_data_copy(t *testing.T) {
 	wg.Wait()
 }
 
-func TestPubsubCancelledWriteToContext(t *testing.T) {
-	ps := internal.NewPubsub(0)
-	defer ps.Close()
-
-	wg := sync.WaitGroup{}
-	wg.Go(func() {
-		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
-
-		time.AfterFunc(time.Second, cancel)
-
-		n, err := ps.WriteToContext(ctx, io.Discard)
-		require.ErrorIs(t, err, context.Canceled)
-		assert.Zero(t, n)
-	})
-	wg.Wait()
-}
-
 func BenchmarkPubsub_Write10k(b *testing.B) {
 	ps := internal.NewPubsub(0)
 	defer ps.Close()
@@ -61,12 +42,12 @@ func BenchmarkPubsub_Write10k(b *testing.B) {
 	buf := make([]byte, 4096)
 	for range 10_000 {
 		go func() {
-			_, err := ps.WriteToContext(b.Context(), io.Discard)
+			_, err := ps.WriteTo(io.Discard)
 			assert.NoError(b, err)
 		}()
 	}
 	go func() {
-		ps.WriteToContext(b.Context(), internal.WriterFunc(func(p []byte) (int, error) {
+		ps.WriteTo(internal.WriterFunc(func(p []byte) (int, error) {
 			time.Sleep(time.Second)
 			return len(p), nil
 		}))

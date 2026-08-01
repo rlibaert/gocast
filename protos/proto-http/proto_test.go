@@ -59,7 +59,7 @@ func TestServiceRegisterer(t *testing.T) {
 			http.NoBody,
 		)
 
-		svc.On("Subscribe", req.Context(), domain.StreamSub("foo"), rec).
+		svc.On("Subscribe", domain.StreamSub("foo"), rec).
 			Return(0, nil).Once()
 		mux.ServeHTTP(rec, req)
 		svc.AssertExpectations(t)
@@ -76,7 +76,7 @@ func TestServiceRegisterer(t *testing.T) {
 			http.NoBody,
 		)
 
-		svc.On("Subscribe", req.Context(), domain.StreamSub("foo"), rec).
+		svc.On("Subscribe", domain.StreamSub("foo"), rec).
 			Return(0, domain.ErrStreamNotFound).Once()
 		mux.ServeHTTP(rec, req)
 		svc.AssertExpectations(t)

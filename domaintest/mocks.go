@@ -20,8 +20,8 @@ func (m *ServiceMock) Publish(pub domain.StreamPub, r io.Reader) (int64, error) 
 	return int64(args.Int(0)), args.Error(1)
 }
 
-func (m *ServiceMock) Subscribe(ctx context.Context, sub domain.StreamSub, w io.Writer) (int64, error) {
-	args := m.Called(ctx, sub, w)
+func (m *ServiceMock) Subscribe(sub domain.StreamSub, w io.Writer) (int64, error) {
+	args := m.Called(sub, w)
 	return int64(args.Int(0)), args.Error(1)
 }
 

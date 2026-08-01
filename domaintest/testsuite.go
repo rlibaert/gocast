@@ -53,8 +53,6 @@ func (s *ServiceSuite) SetupTest() {
 const baseDur = 5 * time.Second
 
 func (s *ServiceSuite) TestPublishSubscribe() {
-	t := s.T()
-
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
@@ -77,7 +75,7 @@ func (s *ServiceSuite) TestPublishSubscribe() {
 	for _, sub := range []domain.StreamSub{"foo", "bar", "foo", "bar"} {
 		wg.Go(func() {
 			re := regexp.MustCompile(`^(` + string(sub) + `)*$`)
-			n, err := s.Service.Subscribe(t.Context(), sub, rwFunc(func(p []byte) (int, error) {
+			n, err := s.Service.Subscribe(sub, rwFunc(func(p []byte) (int, error) {
 				s.True(re.Match(p), string(p), "not "+re.String())
 				return len(p), nil
 			}))
@@ -88,8 +86,6 @@ func (s *ServiceSuite) TestPublishSubscribe() {
 }
 
 func (s *ServiceSuite) TestFallback() {
-	t := s.T()
-
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
@@ -120,7 +116,7 @@ func (s *ServiceSuite) TestFallback() {
 		re1 := regexp.MustCompile(`^(foo)+(bar)*$`) // foo & foo -> bar transition
 		re2 := regexp.MustCompile(`^(bar)+(foo)*$`) // bar & bar -> foo transition (maybe, when the test concludes)
 		re := re1
-		n, err := s.Service.Subscribe(t.Context(), "toto", rwFunc(func(p []byte) (int, error) {
+		n, err := s.Service.Subscribe("toto", rwFunc(func(p []byte) (int, error) {
 			if re == re1 && re2.Match(p) {
 				re = re2
 			}
@@ -134,8 +130,6 @@ func (s *ServiceSuite) TestFallback() {
 }
 
 func (s *ServiceSuite) TestBackup() {
-	t := s.T()
-
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
@@ -168,7 +162,7 @@ func (s *ServiceSuite) TestBackup() {
 		re1 := regexp.MustCompile(`^(bar)+(foo)*$`) // bar & bar -> foo transition
 		re2 := regexp.MustCompile(`^(foo)+(bar)*$`) // foo & foo -> bar transition (maybe, when the test concludes)
 		re := re1
-		n, err := s.Service.Subscribe(t.Context(), "toto", rwFunc(func(p []byte) (int, error) {
+		n, err := s.Service.Subscribe("toto", rwFunc(func(p []byte) (int, error) {
 			if re == re1 && re2.Match(p) {
 				re = re2
 			}
@@ -215,8 +209,6 @@ func (s *ServiceSuite) TestPublishTitle() {
 }
 
 func (s *ServiceSuite) TestCloseOnFallbacksRemoved() {
-	t := s.T()
-
 	wg := sync.WaitGroup{}
 	defer wg.Wait()
 
@@ -240,14 +232,14 @@ func (s *ServiceSuite) TestCloseOnFallbacksRemoved() {
 	})
 	wgPubsPublishing.Wait()
 
-	t.Run("toto gets closed", func(t *testing.T) {
-		n, err := s.Service.Subscribe(t.Context(), "toto", io.Discard)
+	s.Run("toto gets closed", func() {
+		n, err := s.Service.Subscribe("toto", io.Discard)
 		s.Require().NoError(err)
 		s.Positive(n)
 	})
 
-	t.Run("foo still opened", func(t *testing.T) {
-		n, err := s.Service.Subscribe(t.Context(), "foo", io.Discard)
+	s.Run("foo still opened", func() {
+		n, err := s.Service.Subscribe("foo", io.Discard)
 		s.Require().NoError(err)
 		s.Positive(n)
 	})
