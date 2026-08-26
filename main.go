@@ -33,39 +33,50 @@ var (
 	date     string
 )
 
+type args struct {
+	logLevel              slog.Level
+	svcDebounce           time.Duration
+	configFilename        string
+	httpReadHeaderTimeout time.Duration
+	httpAddr              string
+	icyAddr               string
+	srtAddr               string
+}
+
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	main2(ctx)
+
+	a := &args{}
+	//nolint: golines
+	{
+		flag.TextVar(&a.logLevel, "log.level", slog.LevelInfo, "logging `level`")
+		flag.DurationVar(&a.svcDebounce, "service.debounce", 15*time.Second, "Ingested stream healthy time")
+		flag.StringVar(&a.configFilename, "config.filename", "/etc/gocast/config.json", "Configuration file `path`")
+		flag.DurationVar(&a.httpReadHeaderTimeout, "http.read-header-timeout", 15*time.Second, "Time to read HTTP request headers")
+		flag.StringVar(&a.httpAddr, "http.addr", ":8080", "HTTP server binding `host:port`")
+		flag.StringVar(&a.icyAddr, "icy.addr", ":8000", "Icecast-like server binding `host:port`")
+		flag.StringVar(&a.srtAddr, "srt.addr", ":6000", "SRT server binding `host:port`")
+		flag.TextVar(&protoicy.Metaint, "icy.metaint", protoicy.Metaint, "Icecast in-band metadata `bytes` interval")
+
+		flag.VisitAll(func(f *flag.Flag) {
+			env := "GOCAST_" + strings.NewReplacer(".", "_", "-", "").Replace(strings.ToUpper(f.Name))
+			f.Usage = fmt.Sprintf("%s (env %s)", f.Usage, env)
+			if value, ok := os.LookupEnv(env); ok {
+				f.Value.Set(value) //nolint: errcheck,gosec // discard invalid value
+			}
+		})
+		flag.Parse()
+	}
+
+	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: a.logLevel})
+	l := slog.New(h)
+	slog.SetDefault(l)
+
+	main2(ctx, a, l)
 }
 
-func main2(ctx context.Context) {
-	//nolint:golines
-	var (
-		logLevel              = slog.LevelInfo
-		svcDebounce           = flag.Duration("service.debounce", 15*time.Second, "Ingested stream healthy time")
-		configFilename        = flag.String("config.filename", "/etc/gocast/config.json", "Configuration file `path`")
-		httpReadHeaderTimeout = flag.Duration("http.read-header-timeout", 15*time.Second, "Time to read HTTP request headers")
-		httpAddr              = flag.String("http.addr", ":8080", "HTTP server binding `host:port`")
-		icyAddr               = flag.String("icy.addr", ":8000", "Icecast-like server binding `host:port`")
-		srtAddr               = flag.String("srt.addr", ":6000", "SRT server binding `host:port`")
-	)
-	flag.TextVar(&logLevel, "log.level", logLevel, "logging `level`")
-	flag.TextVar(&protoicy.Metaint, "icy.metaint", protoicy.Metaint, "Icecast in-band metadata `bytes` interval")
-	flag.VisitAll(func(f *flag.Flag) {
-		env := "GOCAST_" + strings.NewReplacer(".", "_", "-", "").Replace(strings.ToUpper(f.Name))
-		f.Usage = fmt.Sprintf("%s (env %s)", f.Usage, env)
-		if value, ok := os.LookupEnv(env); ok {
-			f.Value.Set(value) //nolint: errcheck,gosec // discard invalid value
-		}
-	})
-	flag.Parse()
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: logLevel,
-	}))
-	slog.SetDefault(logger)
-
+func main2(ctx context.Context, args *args, logger *slog.Logger) {
 	logger.Info("starting Gocast", slog.Group("build",
 		"version", version,
 		"revision", revision,
@@ -80,10 +91,10 @@ func main2(ctx context.Context) {
 	metrics.RegisterMetricsWriter(func(w io.Writer) { fmt.Fprint(w, metricsInfo) })
 
 	svc, err := domain.NewService(
-		JSONConfigGetter(*configFilename),
+		JSONConfigGetter(args.configFilename),
 		serviceHooks(logger, metrics),
 		serviceStreamCopy,
-		*svcDebounce)
+		args.svcDebounce)
 	if err != nil {
 		logger.Error("failed to create service", "err", err)
 		os.Exit(1)
@@ -102,9 +113,9 @@ func main2(ctx context.Context) {
 	defer wg.Wait()
 
 	var (
-		svcHTTP = svcHTTPServer(svc, logger.With("srv", "http"), *httpAddr, *httpReadHeaderTimeout, metrics)
-		svcICY  = svcICYServer(svc, logger.With("srv", "icy"), *icyAddr, *httpReadHeaderTimeout)
-		svcSRT  = svcSRTServer(svc, logger.With("srv", "srt"), *srtAddr)
+		svcHTTP = svcHTTPServer(svc, logger.With("srv", "http"), args.httpAddr, args.httpReadHeaderTimeout, metrics)
+		svcICY  = svcICYServer(svc, logger.With("srv", "icy"), args.icyAddr, args.httpReadHeaderTimeout)
+		svcSRT  = svcSRTServer(svc, logger.With("srv", "srt"), args.srtAddr)
 	)
 	//nolint:errcheck,gosec // such deferred statements usually discard errors
 	defer func() {
