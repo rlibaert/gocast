@@ -77,9 +77,7 @@ func main2(ctx context.Context) {
 	metrics.RegisterMetricsWriter(metricsWriterProcess)
 
 	metricsInfo := fmt.Sprintf("%sinfo{version=%q,revision=%q} 1\n", "gocast_", version, revision)
-	metrics.RegisterMetricsWriter(func(w io.Writer) {
-		io.WriteString(w, metricsInfo) //nolint: errcheck,gosec // equivalent to [fmt.Fprint]
-	})
+	metrics.RegisterMetricsWriter(func(w io.Writer) { fmt.Fprint(w, metricsInfo) })
 
 	svc, err := domain.NewService(
 		JSONConfigGetter(*configFilename),
