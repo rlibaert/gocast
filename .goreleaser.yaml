@@ -52,11 +52,6 @@ dockers:
       - config.schema.json
 
 changelog:
-  sort: asc
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - "^refacto:"
-      - "^style:"
+      - "^(docs|test|chore|refacto|style)(\\(.+\\))?:"
