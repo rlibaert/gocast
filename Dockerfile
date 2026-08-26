@@ -5,9 +5,9 @@ WORKDIR /builder
 RUN apk upgrade && \
     apk add --no-cache build-base nasm zlib-static
 
-ADD http://ffmpeg.org/releases/ffmpeg-8.1.tar.xz .
-RUN tar -xJf ffmpeg-8.1.tar.xz && \
-    cd ffmpeg-8.1 && \
+ADD http://ffmpeg.org/releases/ffmpeg-9.0.1.tar.xz .
+RUN tar -xJf ffmpeg-9.0.1.tar.xz && \
+    cd ffmpeg-9.0.1 && \
     ./configure \
         --disable-all \
         --enable-avutil --enable-avformat --enable-avcodec \
