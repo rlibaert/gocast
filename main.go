@@ -125,7 +125,7 @@ func main2(ctx context.Context) {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
-	wg.Go(func() { cancel(onSignal(ctx, syscall.SIGHUP, func() { _ = svc.Reconfigure(ctx) })) })
+	wg.Go(func() { cancel(onSignal(ctx, syscall.SIGHUP, func(os.Signal) { _ = svc.Reconfigure(ctx) })) })
 	wg.Go(func() { cancel(svcHTTP.ListenAndServe()) })
 	wg.Go(func() { cancel(svcICY.ListenAndServe()) })
 	wg.Go(func() { cancel(svcSRT.ListenAndServe()) })
@@ -135,22 +135,34 @@ func main2(ctx context.Context) {
 	logger.Error("context done", "err", ctx.Err(), "cause", context.Cause(ctx))
 }
 
-// onSignal waits for the [os.Signal] to run a function.
-func onSignal(ctx context.Context, s os.Signal, do func()) error {
-	c := make(chan os.Signal, 1)
-	defer close(c)
-
-	signal.Notify(c, s)
-	defer signal.Stop(c)
-
-	for {
-		select {
-		case <-c:
-			do()
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+// Consume handles values of a channel in a goroutine pool.
+func Consume[T any](c <-chan T, concurrency int, f func(T)) {
+	sem := make(chan struct{}, concurrency)
+	wg := &sync.WaitGroup{}
+	for v := range c {
+		sem <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-sem }()
+			f(v)
+		})
 	}
+	wg.Wait()
+}
+
+// onSignal waits for the [os.Signal] to run a function.
+func onSignal(ctx context.Context, s os.Signal, f func(os.Signal)) error {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, s)
+
+	stop := context.AfterFunc(ctx, func() {
+		signal.Stop(c)
+		close(c)
+	})
+	defer stop()
+
+	Consume(c, 1, f)
+
+	return ctx.Err()
 }
 
 func svcHTTPServer(
