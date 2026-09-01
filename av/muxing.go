@@ -66,14 +66,15 @@ type realtimeMuxer struct {
 
 func (m *realtimeMuxer) Mux(p *Packet) error {
 	if p.pts != C.AV_NOPTS_VALUE && p.time_base.den != 0 {
-		if m.t.IsZero() {
-			m.t = time.Now()
-		}
-		due := m.t.Add(time.Duration(C.av_rescale_q(
+		pts := time.Duration(C.av_rescale_q(
 			p.pts,
 			p.time_base,
 			C.AVRational{num: 1, den: C.int(time.Second)},
-		)))
+		))
+		if m.t.IsZero() {
+			m.t = time.Now().Add(-pts)
+		}
+		due := m.t.Add(pts)
 		time.Sleep(time.Until(due))
 	}
 
