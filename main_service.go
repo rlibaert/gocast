@@ -88,7 +88,7 @@ func serviceStreamCopy(w io.Writer, r io.Reader) (int64, error) {
 		return errors.Join(werr, av.Discard.Mux(p))
 	})
 
-	_, err = av.Remux(muxer, demuxer)
+	_, err = av.Remux(av.RealtimeMuxer(muxer), demuxer)
 	return n, err
 }
 

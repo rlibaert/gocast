@@ -2,6 +2,7 @@ package av
 
 /*
 #include <libavformat/avformat.h>
+#include <libavutil/mathematics.h>
 
 extern int cgoReaderRead(void *, uint8_t *, int);
 */
@@ -10,6 +11,7 @@ import (
 	"io"
 	"runtime/cgo"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -56,6 +58,37 @@ func (discard) Mux(p *Packet) error {
 
 // Discard is a [Muxer] on which all Mux calls simply discards the [Packet].
 var Discard Muxer = discard{} //nolint: gochecknoglobals // as per [io.Discard]
+
+type realtimeMuxer struct {
+	m Muxer
+	t time.Time // first packet timestamp
+}
+
+func (m *realtimeMuxer) Mux(p *Packet) error {
+	if p.pts != C.AV_NOPTS_VALUE && p.time_base.den != 0 {
+		if m.t.IsZero() {
+			m.t = time.Now()
+		}
+		due := m.t.Add(time.Duration(C.av_rescale_q(
+			p.pts,
+			p.time_base,
+			C.AVRational{num: 1, den: C.int(time.Second)},
+		)))
+		time.Sleep(time.Until(due))
+	}
+
+	return m.m.Mux(p)
+}
+
+// RealtimeMuxer wraps a [Muxer] to mux packets at PTS.
+func RealtimeMuxer(m Muxer) Muxer {
+	switch m := m.(type) {
+	case *realtimeMuxer:
+		return &realtimeMuxer{m: m.m}
+	default:
+		return &realtimeMuxer{m: m}
+	}
+}
 
 // demuxer implements [Demuxer].
 type demuxer struct {
@@ -125,6 +158,9 @@ func (d *demuxer) Demux(p *Packet) error {
 			return Error(err)
 		}
 	}
+
+	p.time_base = unsafe.Slice(d.fmt.streams, d.fmt.nb_streams)[p.stream_index].time_base
+
 	return nil
 }
 
