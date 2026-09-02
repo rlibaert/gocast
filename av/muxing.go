@@ -85,7 +85,7 @@ func (m *ptsMuxer) Mux(p *Packet) error {
 // PTSMuxer wraps a [Muxer] to mux packets at presentation timestamp (PTS).
 // The offset parameter adjusts the muxing rate:
 //   - a zero offset throttles all packets, relatively to the first
-//   - a positive offset is like zero but delayed by that duration
+//   - a positive offset is like zero but delays packets by that duration
 //   - a negative offset throttles packets only if they are too early
 func PTSMuxer(m Muxer, offset time.Duration) Muxer {
 	return &ptsMuxer{m: m, offset: offset}
