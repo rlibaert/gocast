@@ -59,12 +59,12 @@ func main() {
 		flag.StringVar(&a.icyAddr, "icy.addr", ":8000", "Icecast-like server binding `[host]:port`")
 		flag.StringVar(&a.srtAddr, "srt.addr", ":6000", "SRT server binding `[host]:port`")
 		flag.TextVar(&protoicy.Metaint, "icy.metaint", protoicy.Metaint, "Icecast in-band metadata `bytes` interval")
-		flag.Func("stream-copy.realtime-muxer-offset", "Use realtime muxing with offset `duration`", func(s string) error {
+		flag.Func("stream-copy.pts-muxer-offset", "Stream copy PTS muxer offset `duration`", func(s string) error {
 			d, err := time.ParseDuration(s)
 			if err != nil {
 				return err
 			}
-			a.streamCopyFactory.RealtimeMuxerOffset = &d
+			a.streamCopyFactory.PTSMuxerOffset = &d
 			return nil
 		})
 

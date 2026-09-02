@@ -12,7 +12,7 @@ import (
 
 // StreamCopyFactory is a factory of [domain.ServiceStreamCopy] alternatives.
 type StreamCopyFactory struct {
-	RealtimeMuxerOffset *time.Duration
+	PTSMuxerOffset *time.Duration
 }
 
 func (f *StreamCopyFactory) Default(w io.Writer, r io.Reader) (int64, error) {
@@ -42,8 +42,8 @@ func (f *StreamCopyFactory) AVPacketSafe(w io.Writer, r io.Reader) (int64, error
 		return errors.Join(werr, av.Discard.Mux(p))
 	})
 
-	if f.RealtimeMuxerOffset != nil {
-		muxer = av.RealtimeMuxer(muxer, *f.RealtimeMuxerOffset)
+	if f.PTSMuxerOffset != nil {
+		muxer = av.PTSMuxer(muxer, *f.PTSMuxerOffset)
 	}
 
 	_, err = av.Remux(muxer, demuxer)

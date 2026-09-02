@@ -59,13 +59,13 @@ func (discard) Mux(p *Packet) error {
 // Discard is a [Muxer] on which all Mux calls simply discards the [Packet].
 var Discard Muxer = discard{} //nolint: gochecknoglobals // as per [io.Discard]
 
-type realtimeMuxer struct {
+type ptsMuxer struct {
 	offset time.Duration
 	start  time.Time
 	m      Muxer
 }
 
-func (m *realtimeMuxer) Mux(p *Packet) error {
+func (m *ptsMuxer) Mux(p *Packet) error {
 	if p.pts != C.AV_NOPTS_VALUE && p.time_base.den != 0 {
 		pts := time.Duration(C.av_rescale_q(
 			p.pts,
@@ -82,13 +82,13 @@ func (m *realtimeMuxer) Mux(p *Packet) error {
 	return m.m.Mux(p)
 }
 
-// RealtimeMuxer wraps a [Muxer] to mux packets at presentation rate.
-// The offset parameter affects how the rate is actually adjusted:
-//   - a zero offset is true realtime, throttling packets at their actual presentation timestamp
+// PTSMuxer wraps a [Muxer] to mux packets at presentation timestamp (PTS).
+// The offset parameter adjusts the muxing rate:
+//   - a zero offset throttles all packets, relatively to the first
 //   - a positive offset is like zero but delayed by that duration
 //   - a negative offset throttles packets only if they are too early
-func RealtimeMuxer(m Muxer, offset time.Duration) Muxer {
-	return &realtimeMuxer{m: m, offset: offset}
+func PTSMuxer(m Muxer, offset time.Duration) Muxer {
+	return &ptsMuxer{m: m, offset: offset}
 }
 
 // demuxer implements [Demuxer].
