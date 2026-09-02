@@ -1,7 +1,7 @@
 services:
   gocast:
     build: ..
-    command: -service.debounce=3s
+    command: -service.debounce=3s -stream-copy.realtime-muxer-offset=-5s
     volumes:
       - ./config.json:/etc/gocast/config.json
     ports:

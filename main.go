@@ -41,6 +41,7 @@ type args struct {
 	httpAddr              string
 	icyAddr               string
 	srtAddr               string
+	streamCopyFactory     StreamCopyFactory
 }
 
 func main() {
@@ -58,6 +59,14 @@ func main() {
 		flag.StringVar(&a.icyAddr, "icy.addr", ":8000", "Icecast-like server binding `[host]:port`")
 		flag.StringVar(&a.srtAddr, "srt.addr", ":6000", "SRT server binding `[host]:port`")
 		flag.TextVar(&protoicy.Metaint, "icy.metaint", protoicy.Metaint, "Icecast in-band metadata `bytes` interval")
+		flag.Func("stream-copy.realtime-muxer-offset", "Use realtime muxing with offset `duration`", func(s string) error {
+			d, err := time.ParseDuration(s)
+			if err != nil {
+				return err
+			}
+			a.streamCopyFactory.RealtimeMuxerOffset = &d
+			return nil
+		})
 
 		flag.VisitAll(func(f *flag.Flag) {
 			env := "GOCAST_" + strings.NewReplacer(".", "_", "-", "").Replace(strings.ToUpper(f.Name))
@@ -98,7 +107,7 @@ func main2(ctx context.Context, args *args, logger *slog.Logger) {
 	svc, err := domain.NewService(
 		JSONConfigGetter(args.configFilename),
 		serviceHooks(logger, metrics),
-		serviceStreamCopy,
+		args.streamCopyFactory.AVPacketSafe,
 		args.svcDebounce)
 	if err != nil {
 		logger.Error("failed to create service", "err", err)

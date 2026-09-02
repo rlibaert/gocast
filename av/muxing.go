@@ -84,7 +84,6 @@ func (m *realtimeMuxer) Mux(p *Packet) error {
 
 // RealtimeMuxer wraps a [Muxer] to mux packets at presentation rate.
 // The offset parameter affects how the rate is actually adjusted:
-//
 //   - a zero offset is true realtime, throttling packets at their actual presentation timestamp
 //   - a positive offset is like zero but delayed by that duration
 //   - a negative offset throttles packets only if they are too early
