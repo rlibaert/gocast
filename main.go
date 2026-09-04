@@ -66,6 +66,11 @@ func main() {
 				f.Value.Set(value) //nolint: errcheck,gosec // discard invalid value
 			}
 		})
+		flag.BoolFunc("version", "print version and exit", func(string) error {
+			fmt.Println(version)
+			os.Exit(0)
+			return nil
+		})
 		flag.Parse()
 	}
 
