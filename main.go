@@ -83,7 +83,7 @@ func main() {
 			}
 		})
 		flag.BoolFunc("version", "print version and exit", func(string) error {
-			fmt.Fprintln(os.Stdout, version)
+			fmt.Fprintln(os.Stdout, version, "from", revision, "on", date)
 			os.Exit(0)
 			return nil
 		})
