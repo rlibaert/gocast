@@ -52,6 +52,7 @@ dockers:
       - config.schema.json
 
 changelog:
+  use: github
   filters:
     exclude:
       - "^(docs|test|chore|refacto|style)(\\(.+\\))?:"
