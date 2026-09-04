@@ -232,10 +232,6 @@ linters:
       # Default: false
       check-type-assertions: true
 
-    errorlint:
-      allowed-errors-wildcard:
-        - err: "io.EOF"
-
     exhaustive:
       # Program elements to check for exhaustiveness.
       # Default: [ switch ]

@@ -18,8 +18,11 @@ import (
 type Packet C.AVPacket
 
 type (
-	Demuxer interface{ Demux(*Packet) error } // Demuxer reads [Packet]s and returns an error if none are available.
-	Muxer   interface{ Mux(*Packet) error }   // Muxer writes [Packet]s to the underlying packet stream.
+	// Demuxer reads [Packet]s and returns an error if none are available.
+	// It must return [io.EOF] when the end-of-file condition is reached.
+	Demuxer interface{ Demux(*Packet) error }
+	// Muxer writes [Packet]s to the underlying packet stream.
+	Muxer interface{ Mux(*Packet) error }
 )
 
 // RemuxPacket is identical to [Remux] except that it stages through the provided
@@ -27,7 +30,7 @@ type (
 func RemuxPacket(m Muxer, d Demuxer, p *Packet) (int64, error) {
 	for count := int64(0); ; count++ {
 		err := d.Demux(p)
-		if err == io.EOF {
+		if err == io.EOF { //nolint: errorlint // handle [io.EOF] explicitly
 			return count, nil
 		}
 		if err == nil {
