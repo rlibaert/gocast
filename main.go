@@ -45,8 +45,15 @@ type args struct {
 }
 
 func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGHUP)
+	defer context.AfterFunc(ctx, func() {
+		signal.Stop(signals)
+		close(signals)
+	})()
 
 	a := &args{}
 	//nolint: golines
@@ -87,10 +94,10 @@ func main() {
 	l := slog.New(h)
 	slog.SetDefault(l)
 
-	main2(ctx, a, l)
+	main2(ctx, signals, a, l)
 }
 
-func main2(ctx context.Context, args *args, logger *slog.Logger) {
+func main2(ctx context.Context, signals <-chan os.Signal, args *args, logger *slog.Logger) {
 	logger.Info("starting Gocast", slog.Group("build",
 		"version", version,
 		"revision", revision,
@@ -148,7 +155,12 @@ func main2(ctx context.Context, args *args, logger *slog.Logger) {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
-	wg.Go(func() { cancel(onSignal(ctx, syscall.SIGHUP, func(os.Signal) { _ = svc.Reconfigure(ctx) })) })
+	wg.Go(func() {
+		for range signals {
+			_ = svc.Reconfigure(ctx)
+		}
+		cancel(nil)
+	})
 	wg.Go(func() { cancel(svcHTTP.ListenAndServe()) })
 	wg.Go(func() { cancel(svcICY.ListenAndServe()) })
 	wg.Go(func() { cancel(svcSRT.ListenAndServe()) })
@@ -156,36 +168,6 @@ func main2(ctx context.Context, args *args, logger *slog.Logger) {
 
 	<-ctx.Done()
 	logger.Error("context done", "err", ctx.Err(), "cause", context.Cause(ctx))
-}
-
-// Consume handles values of a channel in a goroutine pool.
-func Consume[T any](c <-chan T, concurrency int, f func(T)) {
-	sem := make(chan struct{}, concurrency)
-	wg := &sync.WaitGroup{}
-	for v := range c {
-		sem <- struct{}{}
-		wg.Go(func() {
-			defer func() { <-sem }()
-			f(v)
-		})
-	}
-	wg.Wait()
-}
-
-// onSignal waits for the [os.Signal] to run a function.
-func onSignal(ctx context.Context, s os.Signal, f func(os.Signal)) error {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, s)
-
-	stop := context.AfterFunc(ctx, func() {
-		signal.Stop(c)
-		close(c)
-	})
-	defer stop()
-
-	Consume(c, 1, f)
-
-	return ctx.Err()
 }
 
 func svcHTTPServer(
